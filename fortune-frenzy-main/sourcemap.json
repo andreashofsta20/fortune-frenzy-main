@@ -1,0 +1,3406 @@
+{
+	"name": "fortune-frenzy",
+	"className": "DataModel",
+	"filePaths": ["default.project.json"],
+	"children": [
+		{ "name": "HttpService", "className": "HttpService" },
+		{
+			"name": "ReplicatedStorage",
+			"className": "ReplicatedStorage",
+			"children": [
+				{ "name": "TS", "className": "Folder" },
+				{
+					"name": "rbxts_include",
+					"className": "Folder",
+					"children": [
+						{ "name": "Promise", "className": "ModuleScript", "filePaths": ["include\\Promise.lua"] },
+						{ "name": "RuntimeLib", "className": "ModuleScript", "filePaths": ["include\\RuntimeLib.lua"] },
+						{
+							"name": "node_modules",
+							"className": "Folder",
+							"children": [
+								{
+									"name": "@flamework",
+									"className": "Folder",
+									"children": [
+										{
+											"name": "components",
+											"className": "Folder",
+											"children": [
+												{
+													"name": "out",
+													"className": "ModuleScript",
+													"filePaths": ["node_modules/@flamework\\components\\out\\init.lua"],
+													"children": [
+														{
+															"name": "baseComponent",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@flamework\\components\\out\\baseComponent.lua"
+															]
+														},
+														{
+															"name": "componentTracker",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@flamework\\components\\out\\componentTracker.lua"
+															]
+														},
+														{
+															"name": "components",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@flamework\\components\\out\\components.lua"
+															]
+														},
+														{
+															"name": "utility",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@flamework\\components\\out\\utility.lua"
+															]
+														}
+													]
+												}
+											]
+										},
+										{
+											"name": "core",
+											"className": "Folder",
+											"children": [
+												{
+													"name": "node_modules",
+													"className": "Folder",
+													"children": [
+														{
+															"name": "@rbxts",
+															"className": "Folder",
+															"children": [
+																{
+																	"name": "t",
+																	"className": "Folder",
+																	"children": [
+																		{
+																			"name": "lib",
+																			"className": "Folder",
+																			"children": [
+																				{
+																					"name": "ts",
+																					"className": "ModuleScript",
+																					"filePaths": [
+																						"node_modules/@flamework\\core\\node_modules\\@rbxts\\t\\lib\\ts.lua"
+																					]
+																				}
+																			]
+																		}
+																	]
+																}
+															]
+														}
+													]
+												},
+												{
+													"name": "out",
+													"className": "ModuleScript",
+													"filePaths": ["node_modules/@flamework\\core\\out\\init.lua"],
+													"children": [
+														{
+															"name": "flamework",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@flamework\\core\\out\\flamework.lua"
+															]
+														},
+														{
+															"name": "metadata",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@flamework\\core\\out\\metadata.lua"
+															]
+														},
+														{
+															"name": "modding",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@flamework\\core\\out\\modding.lua"
+															]
+														},
+														{
+															"name": "reflect",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@flamework\\core\\out\\reflect.lua"
+															]
+														},
+														{
+															"name": "utility",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@flamework\\core\\out\\utility.lua"
+															]
+														}
+													]
+												}
+											]
+										},
+										{
+											"name": "networking",
+											"className": "Folder",
+											"children": [
+												{
+													"name": "node_modules",
+													"className": "Folder",
+													"children": [
+														{
+															"name": "@rbxts",
+															"className": "Folder",
+															"children": [
+																{
+																	"name": "t",
+																	"className": "Folder",
+																	"children": [
+																		{
+																			"name": "lib",
+																			"className": "Folder",
+																			"children": [
+																				{
+																					"name": "ts",
+																					"className": "ModuleScript",
+																					"filePaths": [
+																						"node_modules/@flamework\\networking\\node_modules\\@rbxts\\t\\lib\\ts.lua"
+																					]
+																				}
+																			]
+																		}
+																	]
+																}
+															]
+														}
+													]
+												},
+												{
+													"name": "out",
+													"className": "ModuleScript",
+													"filePaths": ["node_modules/@flamework\\networking\\out\\init.lua"],
+													"children": [
+														{
+															"name": "event",
+															"className": "Folder",
+															"children": [
+																{
+																	"name": "createEvent",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@flamework\\networking\\out\\event\\createEvent.lua"
+																	]
+																},
+																{
+																	"name": "createRemoteInstance",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@flamework\\networking\\out\\event\\createRemoteInstance.lua"
+																	]
+																}
+															]
+														},
+														{
+															"name": "events",
+															"className": "Folder",
+															"children": [
+																{
+																	"name": "createClientMethod",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@flamework\\networking\\out\\events\\createClientMethod.lua"
+																	]
+																},
+																{
+																	"name": "createGenericHandler",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@flamework\\networking\\out\\events\\createGenericHandler.lua"
+																	]
+																},
+																{
+																	"name": "createNetworkingEvent",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@flamework\\networking\\out\\events\\createNetworkingEvent.lua"
+																	]
+																},
+																{
+																	"name": "createServerMethod",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@flamework\\networking\\out\\events\\createServerMethod.lua"
+																	]
+																}
+															]
+														},
+														{
+															"name": "function",
+															"className": "Folder",
+															"children": [
+																{
+																	"name": "createFunctionReceiver",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@flamework\\networking\\out\\function\\createFunctionReceiver.lua"
+																	]
+																},
+																{
+																	"name": "createFunctionSender",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@flamework\\networking\\out\\function\\createFunctionSender.lua"
+																	]
+																},
+																{
+																	"name": "errors",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@flamework\\networking\\out\\function\\errors.lua"
+																	]
+																}
+															]
+														},
+														{
+															"name": "functions",
+															"className": "Folder",
+															"children": [
+																{
+																	"name": "createClientMethod",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@flamework\\networking\\out\\functions\\createClientMethod.lua"
+																	]
+																},
+																{
+																	"name": "createGenericHandler",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@flamework\\networking\\out\\functions\\createGenericHandler.lua"
+																	]
+																},
+																{
+																	"name": "createNetworkingFunction",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@flamework\\networking\\out\\functions\\createNetworkingFunction.lua"
+																	]
+																},
+																{
+																	"name": "createServerMethod",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@flamework\\networking\\out\\functions\\createServerMethod.lua"
+																	]
+																}
+															]
+														},
+														{
+															"name": "middleware",
+															"className": "Folder",
+															"children": [
+																{
+																	"name": "createGuardMiddleware",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@flamework\\networking\\out\\middleware\\createGuardMiddleware.lua"
+																	]
+																},
+																{
+																	"name": "createMiddlewareProcessor",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@flamework\\networking\\out\\middleware\\createMiddlewareProcessor.lua"
+																	]
+																},
+																{
+																	"name": "skip",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@flamework\\networking\\out\\middleware\\skip.lua"
+																	]
+																}
+															]
+														},
+														{
+															"name": "util",
+															"className": "Folder",
+															"children": [
+																{
+																	"name": "createSignalContainer",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@flamework\\networking\\out\\util\\createSignalContainer.lua"
+																	]
+																},
+																{
+																	"name": "getNamespaceConfig",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@flamework\\networking\\out\\util\\getNamespaceConfig.lua"
+																	]
+																},
+																{
+																	"name": "timeoutPromise",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@flamework\\networking\\out\\util\\timeoutPromise.lua"
+																	]
+																}
+															]
+														}
+													]
+												}
+											]
+										}
+									]
+								},
+								{
+									"name": "@rbxts",
+									"className": "Folder",
+									"children": [
+										{
+											"name": "Charm",
+											"className": "ModuleScript",
+											"filePaths": [
+												"node_modules/@rbxts\\charm\\src\\init.luau",
+												"node_modules/@rbxts\\charm\\default.project.json"
+											],
+											"children": [
+												{
+													"name": "atom",
+													"className": "ModuleScript",
+													"filePaths": ["node_modules/@rbxts\\charm\\src\\atom.luau"]
+												},
+												{
+													"name": "computed",
+													"className": "ModuleScript",
+													"filePaths": ["node_modules/@rbxts\\charm\\src\\computed.luau"]
+												},
+												{
+													"name": "effect",
+													"className": "ModuleScript",
+													"filePaths": ["node_modules/@rbxts\\charm\\src\\effect.luau"]
+												},
+												{
+													"name": "mapped",
+													"className": "ModuleScript",
+													"filePaths": ["node_modules/@rbxts\\charm\\src\\mapped.luau"]
+												},
+												{
+													"name": "observe",
+													"className": "ModuleScript",
+													"filePaths": ["node_modules/@rbxts\\charm\\src\\observe.luau"]
+												},
+												{
+													"name": "store",
+													"className": "ModuleScript",
+													"filePaths": ["node_modules/@rbxts\\charm\\src\\store.luau"]
+												},
+												{
+													"name": "subscribe",
+													"className": "ModuleScript",
+													"filePaths": ["node_modules/@rbxts\\charm\\src\\subscribe.luau"]
+												},
+												{
+													"name": "types",
+													"className": "ModuleScript",
+													"filePaths": ["node_modules/@rbxts\\charm\\src\\types.luau"]
+												}
+											]
+										},
+										{
+											"name": "CharmSync",
+											"className": "ModuleScript",
+											"filePaths": [
+												"node_modules/@rbxts\\charm-sync\\src\\init.luau",
+												"node_modules/@rbxts\\charm-sync\\default.project.json"
+											],
+											"children": [
+												{
+													"name": "client",
+													"className": "ModuleScript",
+													"filePaths": ["node_modules/@rbxts\\charm-sync\\src\\client.luau"]
+												},
+												{
+													"name": "interval",
+													"className": "ModuleScript",
+													"filePaths": ["node_modules/@rbxts\\charm-sync\\src\\interval.luau"]
+												},
+												{
+													"name": "patch",
+													"className": "ModuleScript",
+													"filePaths": ["node_modules/@rbxts\\charm-sync\\src\\patch.luau"]
+												},
+												{
+													"name": "server",
+													"className": "ModuleScript",
+													"filePaths": ["node_modules/@rbxts\\charm-sync\\src\\server.luau"]
+												},
+												{
+													"name": "types",
+													"className": "ModuleScript",
+													"filePaths": ["node_modules/@rbxts\\charm-sync\\src\\types.luau"]
+												},
+												{
+													"name": "validate",
+													"className": "ModuleScript",
+													"filePaths": ["node_modules/@rbxts\\charm-sync\\src\\validate.luau"]
+												}
+											]
+										},
+										{
+											"name": "compiler-types",
+											"className": "Folder",
+											"children": [{ "name": "types", "className": "Folder" }]
+										},
+										{
+											"name": "flamework-binary-serializer",
+											"className": "Folder",
+											"children": [
+												{
+													"name": "out",
+													"className": "ModuleScript",
+													"filePaths": [
+														"node_modules/@rbxts\\flamework-binary-serializer\\out\\init.lua"
+													],
+													"children": [
+														{
+															"name": "constants",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\flamework-binary-serializer\\out\\constants.lua"
+															]
+														},
+														{
+															"name": "createBinarySerializer",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\flamework-binary-serializer\\out\\createBinarySerializer.lua"
+															]
+														},
+														{
+															"name": "dataType",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\flamework-binary-serializer\\out\\dataType.lua"
+															]
+														},
+														{
+															"name": "metadata",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\flamework-binary-serializer\\out\\metadata\\init.lua"
+															],
+															"children": [
+																{
+																	"name": "tuples",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\flamework-binary-serializer\\out\\metadata\\tuples.lua"
+																	]
+																},
+																{
+																	"name": "unions",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\flamework-binary-serializer\\out\\metadata\\unions.lua"
+																	]
+																}
+															]
+														},
+														{
+															"name": "processSerializerData",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\flamework-binary-serializer\\out\\processSerializerData.lua"
+															]
+														},
+														{
+															"name": "serialization",
+															"className": "Folder",
+															"children": [
+																{
+																	"name": "createDeserializer",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\flamework-binary-serializer\\out\\serialization\\createDeserializer.lua"
+																	]
+																},
+																{
+																	"name": "createSerializer",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\flamework-binary-serializer\\out\\serialization\\createSerializer.lua"
+																	]
+																}
+															]
+														}
+													]
+												}
+											]
+										},
+										{
+											"name": "gameanalytics-sdk",
+											"className": "ModuleScript",
+											"filePaths": ["node_modules/@rbxts\\gameanalytics-sdk\\init.lua"],
+											"children": [
+												{
+													"name": "gameanalytics-sdk",
+													"className": "ModuleScript",
+													"filePaths": [
+														"node_modules/@rbxts\\gameanalytics-sdk\\gameanalytics-sdk\\init.lua"
+													],
+													"children": [
+														{
+															"name": "GameAnalytics",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\gameanalytics-sdk\\gameanalytics-sdk\\GameAnalytics\\init.lua"
+															],
+															"children": [
+																{
+																	"name": "Events",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\gameanalytics-sdk\\gameanalytics-sdk\\GameAnalytics\\Events.lua"
+																	]
+																},
+																{
+																	"name": "GAErrorSeverity",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\gameanalytics-sdk\\gameanalytics-sdk\\GameAnalytics\\GAErrorSeverity.lua"
+																	]
+																},
+																{
+																	"name": "GAProgressionStatus",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\gameanalytics-sdk\\gameanalytics-sdk\\GameAnalytics\\GAProgressionStatus.lua"
+																	]
+																},
+																{
+																	"name": "GAResourceFlowType",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\gameanalytics-sdk\\gameanalytics-sdk\\GameAnalytics\\GAResourceFlowType.lua"
+																	]
+																},
+																{
+																	"name": "HttpApi",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\gameanalytics-sdk\\gameanalytics-sdk\\GameAnalytics\\HttpApi\\init.lua"
+																	],
+																	"children": [
+																		{
+																			"name": "HashLib",
+																			"className": "ModuleScript",
+																			"filePaths": [
+																				"node_modules/@rbxts\\gameanalytics-sdk\\gameanalytics-sdk\\GameAnalytics\\HttpApi\\HashLib\\init.lua"
+																			],
+																			"children": [
+																				{
+																					"name": "Base64",
+																					"className": "ModuleScript",
+																					"filePaths": [
+																						"node_modules/@rbxts\\gameanalytics-sdk\\gameanalytics-sdk\\GameAnalytics\\HttpApi\\HashLib\\Base64.lua"
+																					]
+																				}
+																			]
+																		}
+																	]
+																},
+																{
+																	"name": "Logger",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\gameanalytics-sdk\\gameanalytics-sdk\\GameAnalytics\\Logger.lua"
+																	]
+																},
+																{
+																	"name": "Postie",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\gameanalytics-sdk\\gameanalytics-sdk\\GameAnalytics\\Postie.lua"
+																	]
+																},
+																{
+																	"name": "State",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\gameanalytics-sdk\\gameanalytics-sdk\\GameAnalytics\\State.lua"
+																	]
+																},
+																{
+																	"name": "Store",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\gameanalytics-sdk\\gameanalytics-sdk\\GameAnalytics\\Store\\init.lua"
+																	],
+																	"children": [
+																		{
+																			"name": "DataStoreQueue",
+																			"className": "ModuleScript",
+																			"filePaths": [
+																				"node_modules/@rbxts\\gameanalytics-sdk\\gameanalytics-sdk\\GameAnalytics\\Store\\DataStoreQueue.lua"
+																			]
+																		}
+																	]
+																},
+																{
+																	"name": "Threading",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\gameanalytics-sdk\\gameanalytics-sdk\\GameAnalytics\\Threading.lua"
+																	]
+																},
+																{
+																	"name": "Types",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\gameanalytics-sdk\\gameanalytics-sdk\\GameAnalytics\\Types.lua"
+																	]
+																},
+																{
+																	"name": "Utilities",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\gameanalytics-sdk\\gameanalytics-sdk\\GameAnalytics\\Utilities.lua"
+																	]
+																},
+																{
+																	"name": "Validation",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\gameanalytics-sdk\\gameanalytics-sdk\\GameAnalytics\\Validation.lua"
+																	]
+																},
+																{
+																	"name": "Version",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\gameanalytics-sdk\\gameanalytics-sdk\\GameAnalytics\\Version.lua"
+																	]
+																}
+															]
+														},
+														{
+															"name": "GameAnalyticsClient",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\gameanalytics-sdk\\gameanalytics-sdk\\GameAnalyticsClient.lua"
+															]
+														}
+													]
+												}
+											]
+										},
+										{
+											"name": "maid",
+											"className": "Folder",
+											"children": [
+												{
+													"name": "Maid",
+													"className": "ModuleScript",
+													"filePaths": ["node_modules/@rbxts\\maid\\Maid.lua"]
+												}
+											]
+										},
+										{
+											"name": "object-utils",
+											"className": "ModuleScript",
+											"filePaths": ["node_modules/@rbxts\\object-utils\\init.lua"]
+										},
+										{
+											"name": "pretty-react-hooks",
+											"className": "Folder",
+											"children": [
+												{
+													"name": "out",
+													"className": "ModuleScript",
+													"filePaths": [
+														"node_modules/@rbxts\\pretty-react-hooks\\out\\init.lua"
+													],
+													"children": [
+														{
+															"name": "use-async",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\pretty-react-hooks\\out\\use-async\\init.lua"
+															],
+															"children": [
+																{
+																	"name": "use-async",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\pretty-react-hooks\\out\\use-async\\use-async.lua"
+																	]
+																}
+															]
+														},
+														{
+															"name": "use-async-callback",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\pretty-react-hooks\\out\\use-async-callback\\init.lua"
+															],
+															"children": [
+																{
+																	"name": "use-async-callback",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\pretty-react-hooks\\out\\use-async-callback\\use-async-callback.lua"
+																	]
+																}
+															]
+														},
+														{
+															"name": "use-async-effect",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\pretty-react-hooks\\out\\use-async-effect\\init.lua"
+															],
+															"children": [
+																{
+																	"name": "use-async-effect",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\pretty-react-hooks\\out\\use-async-effect\\use-async-effect.lua"
+																	]
+																}
+															]
+														},
+														{
+															"name": "use-binding-listener",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\pretty-react-hooks\\out\\use-binding-listener\\init.lua"
+															],
+															"children": [
+																{
+																	"name": "use-binding-listener",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\pretty-react-hooks\\out\\use-binding-listener\\use-binding-listener.lua"
+																	]
+																}
+															]
+														},
+														{
+															"name": "use-binding-state",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\pretty-react-hooks\\out\\use-binding-state\\init.lua"
+															],
+															"children": [
+																{
+																	"name": "use-binding-state",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\pretty-react-hooks\\out\\use-binding-state\\use-binding-state.lua"
+																	]
+																}
+															]
+														},
+														{
+															"name": "use-camera",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\pretty-react-hooks\\out\\use-camera\\init.lua"
+															],
+															"children": [
+																{
+																	"name": "use-camera",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\pretty-react-hooks\\out\\use-camera\\use-camera.lua"
+																	]
+																}
+															]
+														},
+														{
+															"name": "use-composed-ref",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\pretty-react-hooks\\out\\use-composed-ref\\init.lua"
+															],
+															"children": [
+																{
+																	"name": "use-composed-ref",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\pretty-react-hooks\\out\\use-composed-ref\\use-composed-ref.lua"
+																	]
+																}
+															]
+														},
+														{
+															"name": "use-debounce-callback",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\pretty-react-hooks\\out\\use-debounce-callback\\init.lua"
+															],
+															"children": [
+																{
+																	"name": "use-debounce-callback",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\pretty-react-hooks\\out\\use-debounce-callback\\use-debounce-callback.lua"
+																	]
+																}
+															]
+														},
+														{
+															"name": "use-debounce-effect",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\pretty-react-hooks\\out\\use-debounce-effect\\init.lua"
+															],
+															"children": [
+																{
+																	"name": "use-debounce-effect",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\pretty-react-hooks\\out\\use-debounce-effect\\use-debounce-effect.lua"
+																	]
+																}
+															]
+														},
+														{
+															"name": "use-debounce-state",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\pretty-react-hooks\\out\\use-debounce-state\\init.lua"
+															],
+															"children": [
+																{
+																	"name": "use-debounce-state",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\pretty-react-hooks\\out\\use-debounce-state\\use-debounce-state.lua"
+																	]
+																}
+															]
+														},
+														{
+															"name": "use-defer-callback",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\pretty-react-hooks\\out\\use-defer-callback\\init.lua"
+															],
+															"children": [
+																{
+																	"name": "use-defer-callback",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\pretty-react-hooks\\out\\use-defer-callback\\use-defer-callback.lua"
+																	]
+																}
+															]
+														},
+														{
+															"name": "use-defer-effect",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\pretty-react-hooks\\out\\use-defer-effect\\init.lua"
+															],
+															"children": [
+																{
+																	"name": "use-defer-effect",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\pretty-react-hooks\\out\\use-defer-effect\\use-defer-effect.lua"
+																	]
+																}
+															]
+														},
+														{
+															"name": "use-defer-state",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\pretty-react-hooks\\out\\use-defer-state\\init.lua"
+															],
+															"children": [
+																{
+																	"name": "use-defer-state",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\pretty-react-hooks\\out\\use-defer-state\\use-defer-state.lua"
+																	]
+																}
+															]
+														},
+														{
+															"name": "use-event-listener",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\pretty-react-hooks\\out\\use-event-listener\\init.lua"
+															],
+															"children": [
+																{
+																	"name": "use-event-listener",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\pretty-react-hooks\\out\\use-event-listener\\use-event-listener.lua"
+																	]
+																}
+															]
+														},
+														{
+															"name": "use-interval",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\pretty-react-hooks\\out\\use-interval\\init.lua"
+															],
+															"children": [
+																{
+																	"name": "use-interval",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\pretty-react-hooks\\out\\use-interval\\use-interval.lua"
+																	]
+																}
+															]
+														},
+														{
+															"name": "use-key-press",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\pretty-react-hooks\\out\\use-key-press\\init.lua"
+															],
+															"children": [
+																{
+																	"name": "use-key-press",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\pretty-react-hooks\\out\\use-key-press\\use-key-press.lua"
+																	]
+																}
+															]
+														},
+														{
+															"name": "use-latest",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\pretty-react-hooks\\out\\use-latest\\init.lua"
+															],
+															"children": [
+																{
+																	"name": "use-latest",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\pretty-react-hooks\\out\\use-latest\\use-latest.lua"
+																	]
+																}
+															]
+														},
+														{
+															"name": "use-latest-callback",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\pretty-react-hooks\\out\\use-latest-callback\\init.lua"
+															],
+															"children": [
+																{
+																	"name": "use-latest-callback",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\pretty-react-hooks\\out\\use-latest-callback\\use-latest-callback.lua"
+																	]
+																}
+															]
+														},
+														{
+															"name": "use-lifetime",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\pretty-react-hooks\\out\\use-lifetime\\init.lua"
+															],
+															"children": [
+																{
+																	"name": "use-lifetime",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\pretty-react-hooks\\out\\use-lifetime\\use-lifetime.lua"
+																	]
+																}
+															]
+														},
+														{
+															"name": "use-motion",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\pretty-react-hooks\\out\\use-motion\\init.lua"
+															],
+															"children": [
+																{
+																	"name": "use-motion",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\pretty-react-hooks\\out\\use-motion\\use-motion.lua"
+																	]
+																}
+															]
+														},
+														{
+															"name": "use-mount-effect",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\pretty-react-hooks\\out\\use-mount-effect\\init.lua"
+															],
+															"children": [
+																{
+																	"name": "use-mount-effect",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\pretty-react-hooks\\out\\use-mount-effect\\use-mount-effect.lua"
+																	]
+																}
+															]
+														},
+														{
+															"name": "use-mouse",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\pretty-react-hooks\\out\\use-mouse\\init.lua"
+															],
+															"children": [
+																{
+																	"name": "use-mouse",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\pretty-react-hooks\\out\\use-mouse\\use-mouse.lua"
+																	]
+																}
+															]
+														},
+														{
+															"name": "use-previous",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\pretty-react-hooks\\out\\use-previous\\init.lua"
+															],
+															"children": [
+																{
+																	"name": "use-previous",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\pretty-react-hooks\\out\\use-previous\\use-previous.lua"
+																	]
+																}
+															]
+														},
+														{
+															"name": "use-spring",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\pretty-react-hooks\\out\\use-spring\\init.lua"
+															],
+															"children": [
+																{
+																	"name": "use-spring",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\pretty-react-hooks\\out\\use-spring\\use-spring.lua"
+																	]
+																}
+															]
+														},
+														{
+															"name": "use-tagged",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\pretty-react-hooks\\out\\use-tagged\\init.lua"
+															],
+															"children": [
+																{
+																	"name": "use-tagged",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\pretty-react-hooks\\out\\use-tagged\\use-tagged.lua"
+																	]
+																}
+															]
+														},
+														{
+															"name": "use-throttle-callback",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\pretty-react-hooks\\out\\use-throttle-callback\\init.lua"
+															],
+															"children": [
+																{
+																	"name": "use-throttle-callback",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\pretty-react-hooks\\out\\use-throttle-callback\\use-throttle-callback.lua"
+																	]
+																}
+															]
+														},
+														{
+															"name": "use-throttle-effect",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\pretty-react-hooks\\out\\use-throttle-effect\\init.lua"
+															],
+															"children": [
+																{
+																	"name": "use-throttle-effect",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\pretty-react-hooks\\out\\use-throttle-effect\\use-throttle-effect.lua"
+																	]
+																}
+															]
+														},
+														{
+															"name": "use-throttle-state",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\pretty-react-hooks\\out\\use-throttle-state\\init.lua"
+															],
+															"children": [
+																{
+																	"name": "use-throttle-state",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\pretty-react-hooks\\out\\use-throttle-state\\use-throttle-state.lua"
+																	]
+																}
+															]
+														},
+														{
+															"name": "use-timeout",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\pretty-react-hooks\\out\\use-timeout\\init.lua"
+															],
+															"children": [
+																{
+																	"name": "use-timeout",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\pretty-react-hooks\\out\\use-timeout\\use-timeout.lua"
+																	]
+																}
+															]
+														},
+														{
+															"name": "use-timer",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\pretty-react-hooks\\out\\use-timer\\init.lua"
+															],
+															"children": [
+																{
+																	"name": "use-timer",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\pretty-react-hooks\\out\\use-timer\\use-timer.lua"
+																	]
+																}
+															]
+														},
+														{
+															"name": "use-unmount-effect",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\pretty-react-hooks\\out\\use-unmount-effect\\init.lua"
+															],
+															"children": [
+																{
+																	"name": "use-unmount-effect",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\pretty-react-hooks\\out\\use-unmount-effect\\use-unmount-effect.lua"
+																	]
+																}
+															]
+														},
+														{
+															"name": "use-update",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\pretty-react-hooks\\out\\use-update\\init.lua"
+															],
+															"children": [
+																{
+																	"name": "use-update",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\pretty-react-hooks\\out\\use-update\\use-update.lua"
+																	]
+																}
+															]
+														},
+														{
+															"name": "use-update-effect",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\pretty-react-hooks\\out\\use-update-effect\\init.lua"
+															],
+															"children": [
+																{
+																	"name": "use-update-effect",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\pretty-react-hooks\\out\\use-update-effect\\use-update-effect.lua"
+																	]
+																}
+															]
+														},
+														{
+															"name": "use-viewport",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\pretty-react-hooks\\out\\use-viewport\\init.lua"
+															],
+															"children": [
+																{
+																	"name": "use-viewport",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\pretty-react-hooks\\out\\use-viewport\\use-viewport.lua"
+																	]
+																}
+															]
+														},
+														{
+															"name": "utils",
+															"className": "Folder",
+															"children": [
+																{
+																	"name": "binding",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\pretty-react-hooks\\out\\utils\\binding.lua"
+																	]
+																},
+																{
+																	"name": "hoarcekat",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\pretty-react-hooks\\out\\utils\\hoarcekat.lua"
+																	]
+																},
+																{
+																	"name": "math",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\pretty-react-hooks\\out\\utils\\math.lua"
+																	]
+																},
+																{
+																	"name": "shallow-equal",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\pretty-react-hooks\\out\\utils\\shallow-equal.lua"
+																	]
+																},
+																{
+																	"name": "testez",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\pretty-react-hooks\\out\\utils\\testez.lua"
+																	]
+																}
+															]
+														}
+													]
+												}
+											]
+										},
+										{
+											"name": "profile-store",
+											"className": "Folder",
+											"children": [
+												{
+													"name": "src",
+													"className": "ModuleScript",
+													"filePaths": ["node_modules/@rbxts\\profile-store\\src\\init.luau"]
+												}
+											]
+										},
+										{
+											"name": "react",
+											"className": "ModuleScript",
+											"filePaths": [
+												"node_modules/@rbxts\\react\\src\\init.lua",
+												"node_modules/@rbxts\\react\\default.project.json"
+											],
+											"children": [
+												{
+													"name": "tags",
+													"className": "ModuleScript",
+													"filePaths": ["node_modules/@rbxts\\react\\src\\tags.lua"]
+												}
+											]
+										},
+										{
+											"name": "ReactCharm",
+											"className": "ModuleScript",
+											"filePaths": [
+												"node_modules/@rbxts\\react-charm\\src\\init.luau",
+												"node_modules/@rbxts\\react-charm\\default.project.json"
+											]
+										},
+										{
+											"name": "react-reflex",
+											"className": "ModuleScript",
+											"filePaths": [
+												"node_modules/@rbxts\\react-reflex\\src\\init.luau",
+												"node_modules/@rbxts\\react-reflex\\default.project.json"
+											],
+											"children": [
+												{
+													"name": "React",
+													"className": "ModuleScript",
+													"filePaths": ["node_modules/@rbxts\\react-reflex\\src\\React.luau"]
+												},
+												{
+													"name": "Reflex",
+													"className": "ModuleScript",
+													"filePaths": ["node_modules/@rbxts\\react-reflex\\src\\Reflex.luau"]
+												},
+												{
+													"name": "components",
+													"className": "Folder",
+													"children": [
+														{
+															"name": "ReflexContext",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\react-reflex\\src\\components\\ReflexContext.luau"
+															]
+														},
+														{
+															"name": "ReflexProvider",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\react-reflex\\src\\components\\ReflexProvider.luau"
+															]
+														}
+													]
+												},
+												{
+													"name": "hooks",
+													"className": "Folder",
+													"children": [
+														{
+															"name": "useProducer",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\react-reflex\\src\\hooks\\useProducer.luau"
+															]
+														},
+														{
+															"name": "useSelector",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\react-reflex\\src\\hooks\\useSelector.luau"
+															]
+														},
+														{
+															"name": "useSelectorCreator",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\react-reflex\\src\\hooks\\useSelectorCreator.luau"
+															]
+														}
+													]
+												}
+											]
+										},
+										{
+											"name": "react-roblox",
+											"className": "ModuleScript",
+											"filePaths": [
+												"node_modules/@rbxts\\react-roblox\\src\\init.lua",
+												"node_modules/@rbxts\\react-roblox\\default.project.json"
+											]
+										},
+										{
+											"name": "ReactLua",
+											"className": "Folder",
+											"filePaths": [
+												"node_modules/@rbxts\\react-vendor\\react-lua.rbxmx",
+												"node_modules/@rbxts\\react-vendor\\default.project.json"
+											],
+											"children": [
+												{ "name": "React", "className": "ModuleScript" },
+												{ "name": "ReactCache", "className": "ModuleScript" },
+												{ "name": "ReactDebugTools", "className": "ModuleScript" },
+												{ "name": "ReactDevtoolsExtensions", "className": "ModuleScript" },
+												{ "name": "ReactDevtoolsShared", "className": "ModuleScript" },
+												{ "name": "ReactIs", "className": "ModuleScript" },
+												{ "name": "ReactReconciler", "className": "ModuleScript" },
+												{ "name": "ReactRoblox", "className": "ModuleScript" },
+												{ "name": "ReactShallowRenderer", "className": "ModuleScript" },
+												{ "name": "ReactTestRenderer", "className": "ModuleScript" },
+												{ "name": "RoactCompat", "className": "ModuleScript" },
+												{ "name": "Scheduler", "className": "ModuleScript" },
+												{ "name": "Shared", "className": "ModuleScript" },
+												{
+													"name": "node_modules",
+													"className": "Folder",
+													"children": [
+														{ "name": ".bin", "className": "Folder" },
+														{
+															"name": ".luau-aliases",
+															"className": "Folder",
+															"children": [
+																{
+																	"name": "@jsdotlua",
+																	"className": "Folder",
+																	"children": [
+																		{
+																			"name": "boolean",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "collections",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "console",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "es7-types",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "instance-of",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "luau-polyfill",
+																			"className": "ModuleScript"
+																		},
+																		{ "name": "math", "className": "ModuleScript" },
+																		{
+																			"name": "number",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "promise",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "react-cache",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "react-debug-tools",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "react-devtools-extensions",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "react-devtools-shared",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "react-is",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "react-reconciler",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "react-roblox",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "react-shallow-renderer",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "react-test-renderer",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "react",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "roact-compat",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "scheduler",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "shared",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "string",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "timers",
+																			"className": "ModuleScript"
+																		}
+																	]
+																},
+																{ "name": "symbol-luau", "className": "ModuleScript" }
+															]
+														},
+														{
+															"name": "@jsdotlua",
+															"className": "Folder",
+															"children": [
+																{
+																	"name": "boolean",
+																	"className": "Folder",
+																	"children": [
+																		{
+																			"name": "package",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "src",
+																			"className": "ModuleScript",
+																			"children": [
+																				{
+																					"name": "toJSBoolean",
+																					"className": "ModuleScript"
+																				}
+																			]
+																		}
+																	]
+																},
+																{
+																	"name": "collections",
+																	"className": "Folder",
+																	"children": [
+																		{
+																			"name": "package",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "src",
+																			"className": "ModuleScript",
+																			"children": [
+																				{
+																					"name": "Array",
+																					"className": "ModuleScript",
+																					"children": [
+																						{
+																							"name": "concat",
+																							"className": "ModuleScript"
+																						},
+																						{
+																							"name": "every",
+																							"className": "ModuleScript"
+																						},
+																						{
+																							"name": "filter",
+																							"className": "ModuleScript"
+																						},
+																						{
+																							"name": "find",
+																							"className": "ModuleScript"
+																						},
+																						{
+																							"name": "findIndex",
+																							"className": "ModuleScript"
+																						},
+																						{
+																							"name": "flat",
+																							"className": "ModuleScript"
+																						},
+																						{
+																							"name": "flatMap",
+																							"className": "ModuleScript"
+																						},
+																						{
+																							"name": "forEach",
+																							"className": "ModuleScript"
+																						},
+																						{
+																							"name": "from",
+																							"className": "ModuleScript",
+																							"children": [
+																								{
+																									"name": "fromArray",
+																									"className": "ModuleScript"
+																								},
+																								{
+																									"name": "fromMap",
+																									"className": "ModuleScript"
+																								},
+																								{
+																									"name": "fromSet",
+																									"className": "ModuleScript"
+																								},
+																								{
+																									"name": "fromString",
+																									"className": "ModuleScript"
+																								}
+																							]
+																						},
+																						{
+																							"name": "includes",
+																							"className": "ModuleScript"
+																						},
+																						{
+																							"name": "indexOf",
+																							"className": "ModuleScript"
+																						},
+																						{
+																							"name": "isArray",
+																							"className": "ModuleScript"
+																						},
+																						{
+																							"name": "join",
+																							"className": "ModuleScript"
+																						},
+																						{
+																							"name": "map",
+																							"className": "ModuleScript"
+																						},
+																						{
+																							"name": "reduce",
+																							"className": "ModuleScript"
+																						},
+																						{
+																							"name": "reverse",
+																							"className": "ModuleScript"
+																						},
+																						{
+																							"name": "shift",
+																							"className": "ModuleScript"
+																						},
+																						{
+																							"name": "slice",
+																							"className": "ModuleScript"
+																						},
+																						{
+																							"name": "some",
+																							"className": "ModuleScript"
+																						},
+																						{
+																							"name": "sort",
+																							"className": "ModuleScript"
+																						},
+																						{
+																							"name": "splice",
+																							"className": "ModuleScript"
+																						},
+																						{
+																							"name": "unshift",
+																							"className": "ModuleScript"
+																						}
+																					]
+																				},
+																				{
+																					"name": "Map",
+																					"className": "ModuleScript",
+																					"children": [
+																						{
+																							"name": "Map",
+																							"className": "ModuleScript"
+																						},
+																						{
+																							"name": "coerceToMap",
+																							"className": "ModuleScript"
+																						},
+																						{
+																							"name": "coerceToTable",
+																							"className": "ModuleScript"
+																						}
+																					]
+																				},
+																				{
+																					"name": "Object",
+																					"className": "ModuleScript",
+																					"children": [
+																						{
+																							"name": "None",
+																							"className": "ModuleScript"
+																						},
+																						{
+																							"name": "assign",
+																							"className": "ModuleScript"
+																						},
+																						{
+																							"name": "entries",
+																							"className": "ModuleScript"
+																						},
+																						{
+																							"name": "freeze",
+																							"className": "ModuleScript"
+																						},
+																						{
+																							"name": "is",
+																							"className": "ModuleScript"
+																						},
+																						{
+																							"name": "isFrozen",
+																							"className": "ModuleScript"
+																						},
+																						{
+																							"name": "keys",
+																							"className": "ModuleScript"
+																						},
+																						{
+																							"name": "preventExtensions",
+																							"className": "ModuleScript"
+																						},
+																						{
+																							"name": "seal",
+																							"className": "ModuleScript"
+																						},
+																						{
+																							"name": "values",
+																							"className": "ModuleScript"
+																						}
+																					]
+																				},
+																				{
+																					"name": "Set",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "WeakMap",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "inspect",
+																					"className": "ModuleScript"
+																				}
+																			]
+																		}
+																	]
+																},
+																{
+																	"name": "console",
+																	"className": "Folder",
+																	"children": [
+																		{
+																			"name": "package",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "src",
+																			"className": "ModuleScript",
+																			"children": [
+																				{
+																					"name": "makeConsoleImpl",
+																					"className": "ModuleScript"
+																				}
+																			]
+																		}
+																	]
+																},
+																{
+																	"name": "es7-types",
+																	"className": "Folder",
+																	"children": [
+																		{
+																			"name": "package",
+																			"className": "ModuleScript"
+																		},
+																		{ "name": "src", "className": "ModuleScript" }
+																	]
+																},
+																{
+																	"name": "instance-of",
+																	"className": "Folder",
+																	"children": [
+																		{
+																			"name": "package",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "src",
+																			"className": "ModuleScript",
+																			"children": [
+																				{
+																					"name": "instanceof",
+																					"className": "ModuleScript"
+																				}
+																			]
+																		}
+																	]
+																},
+																{
+																	"name": "luau-polyfill",
+																	"className": "Folder",
+																	"children": [
+																		{
+																			"name": "package",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "src",
+																			"className": "ModuleScript",
+																			"children": [
+																				{
+																					"name": "AssertionError",
+																					"className": "ModuleScript",
+																					"children": [
+																						{
+																							"name": "AssertionError.global",
+																							"className": "ModuleScript"
+																						}
+																					]
+																				},
+																				{
+																					"name": "Error",
+																					"className": "ModuleScript",
+																					"children": [
+																						{
+																							"name": "Error.global",
+																							"className": "ModuleScript"
+																						}
+																					]
+																				},
+																				{
+																					"name": "Promise",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "encodeURIComponent",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "extends",
+																					"className": "ModuleScript"
+																				}
+																			]
+																		}
+																	]
+																},
+																{
+																	"name": "math",
+																	"className": "Folder",
+																	"children": [
+																		{
+																			"name": "package",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "src",
+																			"className": "ModuleScript",
+																			"children": [
+																				{
+																					"name": "clz32",
+																					"className": "ModuleScript"
+																				}
+																			]
+																		}
+																	]
+																},
+																{
+																	"name": "number",
+																	"className": "Folder",
+																	"children": [
+																		{
+																			"name": "package",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "src",
+																			"className": "ModuleScript",
+																			"children": [
+																				{
+																					"name": "MAX_SAFE_INTEGER",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "MIN_SAFE_INTEGER",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "isFinite",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "isInteger",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "isNaN",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "isSafeInteger",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "toExponential",
+																					"className": "ModuleScript"
+																				}
+																			]
+																		}
+																	]
+																},
+																{
+																	"name": "promise",
+																	"className": "Folder",
+																	"children": [
+																		{ "name": "lib", "className": "ModuleScript" },
+																		{
+																			"name": "package",
+																			"className": "ModuleScript"
+																		}
+																	]
+																},
+																{
+																	"name": "react",
+																	"className": "ModuleScript",
+																	"children": [
+																		{
+																			"name": "None.roblox",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "React",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactBaseClasses",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactBinding.roblox",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactChildren",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactContext",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactCreateRef",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactElement",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactElementValidator",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactForwardRef",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactHooks",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactLazy",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactMemo",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactMutableSource",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactNoopUpdateQueue",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "createSignal.roblox",
+																			"className": "ModuleScript"
+																		}
+																	]
+																},
+																{
+																	"name": "react-cache",
+																	"className": "ModuleScript",
+																	"children": [
+																		{ "name": "LRU", "className": "ModuleScript" },
+																		{
+																			"name": "ReactCacheOld",
+																			"className": "ModuleScript"
+																		}
+																	]
+																},
+																{
+																	"name": "ReactDebugTools",
+																	"className": "ModuleScript",
+																	"children": [
+																		{
+																			"name": "ReactDebugHooks",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactDebugTools",
+																			"className": "ModuleScript"
+																		}
+																	]
+																},
+																{
+																	"name": "react-devtools-extensions",
+																	"className": "ModuleScript",
+																	"children": [
+																		{
+																			"name": "backend",
+																			"className": "ModuleScript"
+																		}
+																	]
+																},
+																{
+																	"name": "react-devtools-shared",
+																	"className": "ModuleScript",
+																	"children": [
+																		{
+																			"name": "backend",
+																			"className": "ModuleScript",
+																			"children": [
+																				{
+																					"name": "NativeStyleEditor",
+																					"className": "Folder",
+																					"children": [
+																						{
+																							"name": "types",
+																							"className": "ModuleScript"
+																						}
+																					]
+																				},
+																				{
+																					"name": "ReactSymbols",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "agent",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "console",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "renderer",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "types",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "utils",
+																					"className": "ModuleScript"
+																				}
+																			]
+																		},
+																		{
+																			"name": "bridge",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "clipboardjs.mock",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "constants",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "devtools",
+																			"className": "ModuleScript",
+																			"children": [
+																				{
+																					"name": "ProfilerStore",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "ProfilingCache",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "cache",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "store",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "types",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "utils",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "views",
+																					"className": "Folder",
+																					"children": [
+																						{
+																							"name": "Components",
+																							"className": "Folder",
+																							"children": [
+																								{
+																									"name": "types",
+																									"className": "ModuleScript"
+																								}
+																							]
+																						},
+																						{
+																							"name": "Profiler",
+																							"className": "Folder",
+																							"children": [
+																								{
+																									"name": "CommitTreeBuilder",
+																									"className": "ModuleScript"
+																								},
+																								{
+																									"name": "FlamegraphChartBuilder",
+																									"className": "ModuleScript"
+																								},
+																								{
+																									"name": "InteractionsChartBuilder",
+																									"className": "ModuleScript"
+																								},
+																								{
+																									"name": "RankedChartBuilder",
+																									"className": "ModuleScript"
+																								},
+																								{
+																									"name": "types",
+																									"className": "ModuleScript"
+																								},
+																								{
+																									"name": "utils",
+																									"className": "ModuleScript"
+																								}
+																							]
+																						}
+																					]
+																				}
+																			]
+																		},
+																		{
+																			"name": "events",
+																			"className": "ModuleScript"
+																		},
+																		{ "name": "hook", "className": "ModuleScript" },
+																		{
+																			"name": "hydration",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "jest.config",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "storage",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "types",
+																			"className": "ModuleScript"
+																		},
+																		{ "name": "utils", "className": "ModuleScript" }
+																	]
+																},
+																{ "name": "react-is", "className": "ModuleScript" },
+																{
+																	"name": "react-reconciler",
+																	"className": "ModuleScript",
+																	"children": [
+																		{
+																			"name": "DebugTracing",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "MaxInts",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactCapturedValue",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactChildFiber.new",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactCurrentFiber",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactFiber.new",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactFiberBeginWork.new",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactFiberClassComponent.new",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactFiberCommitWork.new",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactFiberCompleteWork.new",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactFiberComponentStack",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactFiberContext.new",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactFiberDevToolsHook.new",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactFiberErrorDialog",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactFiberErrorLogger",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactFiberFlags",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactFiberHooks.new",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactFiberHostConfig",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactFiberHostContext.new",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactFiberHotReloading.new",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactFiberHydrationContext.new",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactFiberLane",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactFiberLazyComponent.new",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactFiberNewContext.new",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactFiberOffscreenComponent",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactFiberReconciler",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactFiberReconciler.new",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactFiberRoot.new",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactFiberSchedulerPriorities.roblox",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactFiberStack.new",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactFiberSuspenseComponent.new",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactFiberSuspenseContext.new",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactFiberThrow.new",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactFiberTransition",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactFiberTreeReflection",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactFiberUnwindWork.new",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactFiberWorkInProgress",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactFiberWorkLoop.new",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactHookEffectTags",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactInternalTypes",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactMutableSource.new",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactPortal",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactProfilerTimer.new",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactRootTags",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactStrictModeWarnings.new",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactTestSelectors",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactTypeOfMode",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactUpdateQueue.new",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactWorkTags",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "RobloxReactProfiling",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "SchedulerWithReactIntegration.new",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "SchedulingProfiler",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "forks",
+																			"className": "Folder",
+																			"children": [
+																				{
+																					"name": "ReactFiberHostConfig.test",
+																					"className": "ModuleScript"
+																				}
+																			]
+																		}
+																	]
+																},
+																{
+																	"name": "react-roblox",
+																	"className": "ModuleScript",
+																	"children": [
+																		{
+																			"name": "ReactReconciler.roblox",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "client",
+																			"className": "Folder",
+																			"children": [
+																				{
+																					"name": "ReactRoblox",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "ReactRobloxComponent",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "ReactRobloxComponentTree",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "ReactRobloxHostConfig",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "ReactRobloxHostTypes.roblox",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "ReactRobloxRoot",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "roblox",
+																					"className": "Folder",
+																					"children": [
+																						{
+																							"name": "RobloxComponentProps",
+																							"className": "ModuleScript"
+																						},
+																						{
+																							"name": "SingleEventManager",
+																							"className": "ModuleScript"
+																						},
+																						{
+																							"name": "getDefaultInstanceProperty",
+																							"className": "ModuleScript"
+																						}
+																					]
+																				}
+																			]
+																		}
+																	]
+																},
+																{
+																	"name": "react-shallow-renderer",
+																	"className": "ModuleScript"
+																},
+																{
+																	"name": "react-test-renderer",
+																	"className": "ModuleScript",
+																	"children": [
+																		{
+																			"name": "ReactTestHostConfig",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactTestRenderer",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "roblox",
+																			"className": "Folder",
+																			"children": [
+																				{
+																					"name": "RobloxComponentProps",
+																					"className": "ModuleScript"
+																				}
+																			]
+																		}
+																	]
+																},
+																{
+																	"name": "roact-compat",
+																	"className": "ModuleScript",
+																	"children": [
+																		{
+																			"name": "Portal",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "RoactTree",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "createFragment",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "oneChild",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "setGlobalConfig",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "warnOnce",
+																			"className": "ModuleScript"
+																		}
+																	]
+																},
+																{
+																	"name": "scheduler",
+																	"className": "ModuleScript",
+																	"children": [
+																		{
+																			"name": "Scheduler",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "SchedulerFeatureFlags",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "SchedulerHostConfig",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "SchedulerMinHeap",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "SchedulerPriorities",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "SchedulerProfiling",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "Tracing",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "TracingSubscriptions",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "forks",
+																			"className": "Folder",
+																			"children": [
+																				{
+																					"name": "SchedulerHostConfig.default",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "SchedulerHostConfig.mock",
+																					"className": "ModuleScript"
+																				}
+																			]
+																		},
+																		{
+																			"name": "unstable_mock",
+																			"className": "ModuleScript"
+																		}
+																	]
+																},
+																{
+																	"name": "shared",
+																	"className": "ModuleScript",
+																	"children": [
+																		{
+																			"name": "ConsolePatchingDev.roblox",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ErrorHandling.roblox",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ExecutionEnvironment",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "PropMarkers",
+																			"className": "Folder",
+																			"children": [
+																				{
+																					"name": "Change",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "Event",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "Tag",
+																					"className": "ModuleScript"
+																				}
+																			]
+																		},
+																		{
+																			"name": "ReactComponentStackFrame",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactElementType",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactErrorUtils",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactFeatureFlags",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactFiberHostConfig",
+																			"className": "ModuleScript",
+																			"children": [
+																				{
+																					"name": "WithNoHydration",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "WithNoPersistence",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "WithNoTestSelectors",
+																					"className": "ModuleScript"
+																				}
+																			]
+																		},
+																		{
+																			"name": "ReactInstanceMap",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactSharedInternals",
+																			"className": "ModuleScript",
+																			"children": [
+																				{
+																					"name": "IsSomeRendererActing",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "ReactCurrentBatchConfig",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "ReactCurrentDispatcher",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "ReactCurrentOwner",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "ReactDebugCurrentFrame",
+																					"className": "ModuleScript"
+																				}
+																			]
+																		},
+																		{
+																			"name": "ReactSymbols",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactTypes",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "ReactVersion",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "Symbol.roblox",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "Type.roblox",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "UninitializedState.roblox",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "checkPropTypes",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "console",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "consoleWithStackDev",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "enqueueTask.roblox",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "flowtypes.roblox",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "formatProdErrorMessage",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "getComponentName",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "invariant",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "invokeGuardedCallbackImpl",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "isValidElementType",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "objectIs",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "shallowEqual",
+																			"className": "ModuleScript"
+																		}
+																	]
+																},
+																{
+																	"name": "string",
+																	"className": "Folder",
+																	"children": [
+																		{
+																			"name": "package",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "src",
+																			"className": "ModuleScript",
+																			"children": [
+																				{
+																					"name": "charCodeAt",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "endsWith",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "findOr",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "includes",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "indexOf",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "lastIndexOf",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "slice",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "split",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "startsWith",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "substr",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "trim",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "trimEnd",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "trimStart",
+																					"className": "ModuleScript"
+																				}
+																			]
+																		}
+																	]
+																},
+																{
+																	"name": "timers",
+																	"className": "Folder",
+																	"children": [
+																		{
+																			"name": "package",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "src",
+																			"className": "ModuleScript",
+																			"children": [
+																				{
+																					"name": "makeIntervalImpl",
+																					"className": "ModuleScript"
+																				},
+																				{
+																					"name": "makeTimerImpl",
+																					"className": "ModuleScript"
+																				}
+																			]
+																		}
+																	]
+																}
+															]
+														},
+														{
+															"name": "commander",
+															"className": "Folder",
+															"children": [
+																{ "name": "lib", "className": "Folder" },
+																{
+																	"name": "package-support",
+																	"className": "ModuleScript"
+																},
+																{ "name": "package", "className": "ModuleScript" },
+																{ "name": "typings", "className": "Folder" }
+															]
+														},
+														{
+															"name": "npmluau",
+															"className": "Folder",
+															"children": [
+																{ "name": "LICENSE", "className": "StringValue" },
+																{
+																	"name": "luau-types-re-export",
+																	"className": "Folder",
+																	"children": [
+																		{
+																			"name": "pkg",
+																			"className": "Folder",
+																			"children": [
+																				{
+																					"name": "package",
+																					"className": "ModuleScript"
+																				}
+																			]
+																		}
+																	]
+																},
+																{ "name": "package", "className": "ModuleScript" },
+																{ "name": "src", "className": "Folder" }
+															]
+														},
+														{
+															"name": "symbol-luau",
+															"className": "Folder",
+															"children": [
+																{ "name": "LICENSE", "className": "StringValue" },
+																{ "name": "package", "className": "ModuleScript" },
+																{
+																	"name": "src",
+																	"className": "ModuleScript",
+																	"children": [
+																		{
+																			"name": "Registry.global",
+																			"className": "ModuleScript"
+																		},
+																		{
+																			"name": "Symbol",
+																			"className": "ModuleScript"
+																		}
+																	]
+																}
+															]
+														},
+														{
+															"name": "walkdir",
+															"className": "Folder",
+															"children": [
+																{ "name": "package", "className": "ModuleScript" },
+																{
+																	"name": "test",
+																	"className": "Folder",
+																	"children": [
+																		{
+																			"name": "comparison",
+																			"className": "Folder",
+																			"children": [
+																				{
+																					"name": "package",
+																					"className": "ModuleScript"
+																				}
+																			]
+																		},
+																		{
+																			"name": "dir",
+																			"className": "Folder",
+																			"children": [
+																				{
+																					"name": "foo",
+																					"className": "Folder",
+																					"children": [
+																						{
+																							"name": "a",
+																							"className": "Folder",
+																							"children": [
+																								{
+																									"name": "b",
+																									"className": "Folder",
+																									"children": [
+																										{
+																											"name": "c",
+																											"className": "Folder"
+																										}
+																									]
+																								}
+																							]
+																						}
+																					]
+																				},
+																				{
+																					"name": "nested-symlink",
+																					"className": "Folder"
+																				},
+																				{
+																					"name": "symlinks",
+																					"className": "Folder",
+																					"children": [
+																						{
+																							"name": "dir1",
+																							"className": "Folder"
+																						},
+																						{
+																							"name": "dir2",
+																							"className": "Folder"
+																						}
+																					]
+																				}
+																			]
+																		}
+																	]
+																}
+															]
+														}
+													]
+												}
+											]
+										},
+										{
+											"name": "reflex",
+											"className": "Folder",
+											"children": [
+												{
+													"name": "src",
+													"className": "ModuleScript",
+													"filePaths": ["node_modules/@rbxts\\reflex\\src\\init.lua"],
+													"children": [
+														{
+															"name": "Promise",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\reflex\\src\\Promise.lua"
+															]
+														},
+														{
+															"name": "applyMiddleware",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\reflex\\src\\applyMiddleware.lua"
+															]
+														},
+														{
+															"name": "broadcast",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\reflex\\src\\broadcast\\init.lua"
+															],
+															"children": [
+																{
+																	"name": "createBroadcastReceiver",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\reflex\\src\\broadcast\\createBroadcastReceiver.lua"
+																	]
+																},
+																{
+																	"name": "createBroadcaster",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\reflex\\src\\broadcast\\createBroadcaster.lua"
+																	]
+																},
+																{
+																	"name": "hydrate",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\reflex\\src\\broadcast\\hydrate.lua"
+																	]
+																}
+															]
+														},
+														{
+															"name": "combineProducers",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\reflex\\src\\combineProducers.lua"
+															]
+														},
+														{
+															"name": "createProducer",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\reflex\\src\\createProducer.lua"
+															]
+														},
+														{
+															"name": "createSelector",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\reflex\\src\\createSelector.lua"
+															]
+														},
+														{
+															"name": "middleware",
+															"className": "Folder",
+															"children": [
+																{
+																	"name": "loggerMiddleware",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\reflex\\src\\middleware\\loggerMiddleware.lua"
+																	]
+																}
+															]
+														},
+														{
+															"name": "types",
+															"className": "ModuleScript",
+															"filePaths": ["node_modules/@rbxts\\reflex\\src\\types.lua"]
+														},
+														{
+															"name": "utils",
+															"className": "Folder",
+															"children": [
+																{
+																	"name": "createSelectArrayDiffs",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\reflex\\src\\utils\\createSelectArrayDiffs.lua"
+																	]
+																},
+																{
+																	"name": "setInterval",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\reflex\\src\\utils\\setInterval.lua"
+																	]
+																},
+																{
+																	"name": "shallowEqual",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\reflex\\src\\utils\\shallowEqual.lua"
+																	]
+																},
+																{
+																	"name": "testSelector",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\reflex\\src\\utils\\testSelector.lua"
+																	]
+																}
+															]
+														}
+													]
+												}
+											]
+										},
+										{
+											"name": "ripple",
+											"className": "Folder",
+											"children": [
+												{
+													"name": "src",
+													"className": "ModuleScript",
+													"filePaths": ["node_modules/@rbxts\\ripple\\src\\init.luau"],
+													"children": [
+														{
+															"name": "config",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\ripple\\src\\config.luau"
+															]
+														},
+														{
+															"name": "createMotion",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\ripple\\src\\createMotion.luau"
+															]
+														},
+														{
+															"name": "solvers",
+															"className": "Folder",
+															"children": [
+																{
+																	"name": "immediate",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\ripple\\src\\solvers\\immediate.luau"
+																	]
+																},
+																{
+																	"name": "linear",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\ripple\\src\\solvers\\linear.luau"
+																	]
+																},
+																{
+																	"name": "spring",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\ripple\\src\\solvers\\spring.luau"
+																	]
+																},
+																{
+																	"name": "tween",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\ripple\\src\\solvers\\tween.luau"
+																	]
+																}
+															]
+														},
+														{
+															"name": "types",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\ripple\\src\\types.luau"
+															]
+														},
+														{
+															"name": "utils",
+															"className": "Folder",
+															"children": [
+																{
+																	"name": "assign",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\ripple\\src\\utils\\assign.luau"
+																	]
+																},
+																{
+																	"name": "intermediate",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\ripple\\src\\utils\\intermediate.luau"
+																	]
+																},
+																{
+																	"name": "merge",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\ripple\\src\\utils\\merge.luau"
+																	]
+																},
+																{
+																	"name": "snapshot",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\ripple\\src\\utils\\snapshot.luau"
+																	]
+																},
+																{
+																	"name": "spy",
+																	"className": "ModuleScript",
+																	"filePaths": [
+																		"node_modules/@rbxts\\ripple\\src\\utils\\spy.luau"
+																	]
+																}
+															]
+														}
+													]
+												}
+											]
+										},
+										{
+											"name": "services",
+											"className": "ModuleScript",
+											"filePaths": ["node_modules/@rbxts\\services\\init.lua"]
+										},
+										{
+											"name": "set-timeout",
+											"className": "Folder",
+											"children": [
+												{
+													"name": "out",
+													"className": "ModuleScript",
+													"filePaths": ["node_modules/@rbxts\\set-timeout\\out\\init.lua"],
+													"children": [
+														{
+															"name": "debounce",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\set-timeout\\out\\debounce.lua"
+															]
+														},
+														{
+															"name": "debounce.spec",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\set-timeout\\out\\debounce.spec.lua"
+															]
+														},
+														{
+															"name": "set-countdown",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\set-timeout\\out\\set-countdown.lua"
+															]
+														},
+														{
+															"name": "set-countdown.spec",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\set-timeout\\out\\set-countdown.spec.lua"
+															]
+														},
+														{
+															"name": "set-interval",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\set-timeout\\out\\set-interval.lua"
+															]
+														},
+														{
+															"name": "set-interval.spec",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\set-timeout\\out\\set-interval.spec.lua"
+															]
+														},
+														{
+															"name": "set-timeout",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\set-timeout\\out\\set-timeout.lua"
+															]
+														},
+														{
+															"name": "set-timeout.spec",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\set-timeout\\out\\set-timeout.spec.lua"
+															]
+														},
+														{
+															"name": "throttle",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\set-timeout\\out\\throttle.lua"
+															]
+														},
+														{
+															"name": "throttle.spec",
+															"className": "ModuleScript",
+															"filePaths": [
+																"node_modules/@rbxts\\set-timeout\\out\\throttle.spec.lua"
+															]
+														}
+													]
+												}
+											]
+										},
+										{
+											"name": "signal",
+											"className": "ModuleScript",
+											"filePaths": ["node_modules/@rbxts\\signal\\init.lua"]
+										},
+										{
+											"name": "t",
+											"className": "Folder",
+											"children": [
+												{
+													"name": "lib",
+													"className": "Folder",
+													"children": [
+														{
+															"name": "ts",
+															"className": "ModuleScript",
+															"filePaths": ["node_modules/@rbxts\\t\\lib\\ts.lua"]
+														}
+													]
+												}
+											]
+										},
+										{
+											"name": "types",
+											"className": "Folder",
+											"children": [
+												{
+													"name": "include",
+													"className": "Folder",
+													"children": [{ "name": "generated", "className": "Folder" }]
+												}
+											]
+										}
+									]
+								}
+							]
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "ServerScriptService",
+			"className": "ServerScriptService",
+			"children": [{ "name": "TS", "className": "Folder" }]
+		},
+		{ "name": "SoundService", "className": "SoundService" },
+		{
+			"name": "StarterPlayer",
+			"className": "StarterPlayer",
+			"children": [
+				{
+					"name": "StarterPlayerScripts",
+					"className": "StarterPlayerScripts",
+					"children": [{ "name": "TS", "className": "Folder" }]
+				}
+			]
+		},
+		{ "name": "Workspace", "className": "Workspace" }
+	]
+}

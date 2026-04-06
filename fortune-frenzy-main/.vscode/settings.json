@@ -1,0 +1,44 @@
+{
+	"files.eol": "\n",
+	"[typescript]": {
+		"editor.defaultFormatter": "esbenp.prettier-vscode",
+		"editor.formatOnSave": true
+	},
+	"[typescriptreact]": {
+		"editor.defaultFormatter": "esbenp.prettier-vscode",
+		"editor.formatOnSave": true
+	},
+	"eslint.run": "onType",
+	"eslint.format.enable": true,
+	"typescript.tsdk": "node_modules/typescript/lib",
+	"robloxLsp.workspace.loadMode": "Rojo Project",
+	"robloxLsp.workspace.rojoProjectFile": "default.project.json",
+	"robloxLsp.workspace.loadRequiredFiles": false,
+	"robloxLsp.diagnostics.neededFileStatus": {
+		"undefined-type": "Opened"
+	},
+	"robloxLsp.workspace.ignoreDir": [
+		".vscode",
+		"**/_Index/**",
+		"**/node_modules/**",
+		"node_modules",
+		"**/out/**",
+		"out"
+	],
+	"sqltools.connections": [
+		{
+			"mysqlOptions": {
+				"authProtocol": "default",
+				"enableSsl": "Disabled"
+			},
+			"previewLimit": 50,
+			"server": "198.244.253.65",
+			"port": 3306,
+			"driver": "MySQL",
+			"name": "Novaware",
+			"database": "Game1",
+			"username": "root",
+			"password": "5bEXlxHe1e523ehH"
+		}
+	]
+}
