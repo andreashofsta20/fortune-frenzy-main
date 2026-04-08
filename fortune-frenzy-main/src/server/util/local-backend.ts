@@ -240,18 +240,18 @@ class LocalBackend {
 	private readonly itemSerialByItemId = new Map<string, number>();
 	private readonly monitoredMarketplaceSignatures = new Map<string, string>();
 	private readonly minigameStats = new Map<string, MinigameStats>();
-	private readonly persistenceStore = DataStoreService.GetDataStore("FF_LocalBackend_State_v5");
-	private readonly caseStatsStore = DataStoreService.GetDataStore("FF_LocalBackend_CaseStats_v5");
-	private readonly globalMarketplaceStore = DataStoreService.GetDataStore("FF_LocalBackend_GlobalMarketplace_v5");
-	private readonly globalTradesStore = DataStoreService.GetDataStore("FF_LocalBackend_GlobalTrades_v5");
-	private readonly globalCashChangesStore = DataStoreService.GetDataStore("FF_LocalBackend_GlobalCashChanges_v5");
-	private readonly globalCoinflipsStore = DataStoreService.GetDataStore("FF_LocalBackend_GlobalCoinflips_v5");
-	private readonly globalCaseBattlesStore = DataStoreService.GetDataStore("FF_LocalBackend_GlobalCaseBattles_v5");
-	private readonly globalJackpotsStore = DataStoreService.GetDataStore("FF_LocalBackend_GlobalJackpots_v5");
-	private readonly globalUsersStore = DataStoreService.GetDataStore("FF_LocalBackend_GlobalUsers_v5");
-	private readonly globalItemSerialsStore = DataStoreService.GetDataStore("FF_LocalBackend_GlobalItemSerials_v5");
+	private readonly persistenceStore = DataStoreService.GetDataStore("FF_LocalBackend_State_v6");
+	private readonly caseStatsStore = DataStoreService.GetDataStore("FF_LocalBackend_CaseStats_v6");
+	private readonly globalMarketplaceStore = DataStoreService.GetDataStore("FF_LocalBackend_GlobalMarketplace_v6");
+	private readonly globalTradesStore = DataStoreService.GetDataStore("FF_LocalBackend_GlobalTrades_v6");
+	private readonly globalCashChangesStore = DataStoreService.GetDataStore("FF_LocalBackend_GlobalCashChanges_v6");
+	private readonly globalCoinflipsStore = DataStoreService.GetDataStore("FF_LocalBackend_GlobalCoinflips_v6");
+	private readonly globalCaseBattlesStore = DataStoreService.GetDataStore("FF_LocalBackend_GlobalCaseBattles_v6");
+	private readonly globalJackpotsStore = DataStoreService.GetDataStore("FF_LocalBackend_GlobalJackpots_v6");
+	private readonly globalUsersStore = DataStoreService.GetDataStore("FF_LocalBackend_GlobalUsers_v6");
+	private readonly globalItemSerialsStore = DataStoreService.GetDataStore("FF_LocalBackend_GlobalItemSerials_v6");
 	private readonly globalInventoryChangesStore = DataStoreService.GetDataStore(
-		"FF_LocalBackend_GlobalInventoryChanges_v5",
+		"FF_LocalBackend_GlobalInventoryChanges_v6",
 	);
 	private readonly globalUsers = new Map<string, LocalUser>();
 	private readonly loadedUsers = new Set<string>();
@@ -267,7 +267,7 @@ class LocalBackend {
 	private readonly MAX_ACTIVE_JACKPOT_JOINS_PER_PLAYER = 3;
 	private readonly INVENTORY_CHANGES_SYNC_INTERVAL = RunService.IsStudio() ? 10 : 5;
 	private readonly COPY_ID_AUDIT_INTERVAL = 60;
-	private readonly MINIGAME_TICK_INTERVAL = 0.7;
+	private readonly MINIGAME_TICK_INTERVAL = 1;
 	private readonly ACTIVE_USER_WINDOW_SECONDS = RunService.IsStudio() ? 30 : 20;
 	private readonly FORCE_SYNC_COOLDOWN_SECONDS = RunService.IsStudio() ? 0.5 : 2.5;
 	private readonly FORCE_SYNC_JITTER_SECONDS = RunService.IsStudio() ? 0.1 : 0.8;
@@ -315,7 +315,6 @@ class LocalBackend {
 		this.syncGlobalJackpots(true);
 		this.syncGlobalUsers(true);
 		this.syncGlobalInventoryChanges(true);
-		this.runStartupGlobalRecoverySweep();
 
 		Players.PlayerRemoving.Connect((player) => {
 			const userId = tostring(player.UserId);
@@ -378,26 +377,6 @@ class LocalBackend {
 			this.flushDirtyUsers();
 			this.flushCaseStats();
 			this.syncGlobalUsers(true);
-		});
-	}
-
-	private runStartupGlobalRecoverySweep() {
-		task.defer(() => {
-			this.runLoopSafely("startup global recovery", () => {
-				// First, pull freshest global state snapshot.
-				this.syncGlobalCoinflips(true);
-				this.syncGlobalCaseBattles(true);
-				this.syncGlobalJackpots(true);
-
-				// Then force lifecycle processing so stale records recover when a server comes back online.
-				this.updateCoinflips(true);
-				this.updateCaseBattles(true);
-				this.updateJackpots(true);
-
-				// Finally, aggressively remove already-completed stale entries.
-				this.cleanupCompletedCoinflips();
-				this.cleanupCompletedCaseBattles();
-			});
 		});
 	}
 
@@ -907,25 +886,22 @@ class LocalBackend {
 				nextAutoId = math.max(nextAutoId, math.floor(state.next_coinflip_auto_id));
 			}
 
-			if (state.coinflips && typeIs(state.coinflips, "table")) {
-				for (const [coinflipId, rawCoinflipRecord] of pairs(state.coinflips)) {
-					const coinflipRecord = this.deserializeCoinflipRecord(rawCoinflipRecord);
-					if (!coinflipRecord) continue;
-					const now = os.time();
-					const completedAt =
-						typeIs(rawCoinflipRecord, "table") && typeIs(rawCoinflipRecord.completed_at, "number")
-							? math.floor(rawCoinflipRecord.completed_at)
-							: 0;
-					if (
-						coinflipRecord.data.status === "completed" &&
-						now - completedAt > 10 // wait 10s before removing
-					) {
-						continue; // skip adding = deletes it from sync
-					}
-					coinflips[tostring(coinflipId)] = this.serializeCoinflipRecord(coinflipRecord);
-					nextAutoId = math.max(nextAutoId, (coinflipRecord.data.auto_id ?? 0) + 1);
-				}
-			}
+			   if (state.coinflips && typeIs(state.coinflips, "table")) {
+				   for (const [coinflipId, rawCoinflipRecord] of pairs(state.coinflips)) {
+					   const coinflipRecord = this.deserializeCoinflipRecord(rawCoinflipRecord);
+					   if (!coinflipRecord) continue;
+					   const now = os.time();
+					   const completedAt = typeIs(rawCoinflipRecord, "table") && typeIs(rawCoinflipRecord.completed_at, "number") ? math.floor(rawCoinflipRecord.completed_at) : 0;
+					   if (
+						   coinflipRecord.data.status === "completed" &&
+						   now - completedAt > 10 // wait 10s before removing
+					   ) {
+						   continue; // skip adding = deletes it from sync
+					   }
+					   coinflips[tostring(coinflipId)] = this.serializeCoinflipRecord(coinflipRecord);
+					   nextAutoId = math.max(nextAutoId, (coinflipRecord.data.auto_id ?? 0) + 1);
+				   }
+			   }
 		}
 
 		return {
@@ -1268,24 +1244,21 @@ class LocalBackend {
 				updatedAt = state.updated_at;
 			}
 
-			if (state.jackpots && typeIs(state.jackpots, "table")) {
-				for (const [jackpotId, rawJackpotRecord] of pairs(state.jackpots)) {
-					const jackpotRecord = this.deserializeJackpotRecord(rawJackpotRecord);
-					if (!jackpotRecord) continue;
-					const now = os.time();
-					const completedAt =
-						typeIs(rawJackpotRecord, "table") && typeIs(rawJackpotRecord.completed_at, "number")
-							? math.floor(rawJackpotRecord.completed_at)
-							: 0;
-					if (
-						jackpotRecord.data.status === "complete" &&
-						now - completedAt > 10 // wait 10s before removing
-					) {
-						continue; // skip adding = deletes it from sync
-					}
-					jackpots[tostring(jackpotId)] = this.serializeJackpotRecord(jackpotRecord);
-				}
-			}
+			   if (state.jackpots && typeIs(state.jackpots, "table")) {
+				   for (const [jackpotId, rawJackpotRecord] of pairs(state.jackpots)) {
+					   const jackpotRecord = this.deserializeJackpotRecord(rawJackpotRecord);
+					   if (!jackpotRecord) continue;
+					   const now = os.time();
+					   const completedAt = typeIs(rawJackpotRecord, "table") && typeIs(rawJackpotRecord.completed_at, "number") ? math.floor(rawJackpotRecord.completed_at) : 0;
+					   if (
+						   jackpotRecord.data.status === "complete" &&
+						   now - completedAt > 10 // wait 10s before removing
+					   ) {
+						   continue; // skip adding = deletes it from sync
+					   }
+					   jackpots[tostring(jackpotId)] = this.serializeJackpotRecord(jackpotRecord);
+				   }
+			   }
 		}
 
 		return {
@@ -1967,10 +1940,6 @@ class LocalBackend {
 			return this.callBotCoinflip(segments[3], tostring(payload.user_id ?? 0));
 		}
 
-		if (method === "POST" && path === "/coinflip/cleanup-completed") {
-			return this.cleanupCompletedCoinflips();
-		}
-
 		if (method === "GET" && path === "/casebattles") {
 			return this.ok({
 				status: "OK",
@@ -2008,10 +1977,6 @@ class LocalBackend {
 					client_seed?: string;
 				}) ?? {};
 			return this.joinCaseBattle(segments[3], payload);
-		}
-
-		if (method === "POST" && path === "/casebattles/cleanup-completed") {
-			return this.cleanupCompletedCaseBattles();
 		}
 
 		if (method === "GET" && path === "/jackpot/pots") {
@@ -5584,15 +5549,13 @@ class LocalBackend {
 
 			for (const [, record] of this.coinflips) {
 				const shouldManage = this.shouldManageServerScopedRecord(record.data.server_id);
-				const canResolveGlobal = record.data.type === "global";
-				const canManageLifecycle = shouldManage || canResolveGlobal;
 
-				if (canManageLifecycle && record.data.status === "awaiting_confirmation") {
+				if (shouldManage && record.data.status === "awaiting_confirmation") {
 					hasPendingResolution = true;
 					break;
 				}
 
-				if (canManageLifecycle && record.data.status === "completed" && record.completedAt !== undefined) {
+				if (shouldManage && record.data.status === "completed" && record.completedAt !== undefined) {
 					hasCompletedToCleanup = true;
 				}
 
@@ -5635,14 +5598,12 @@ class LocalBackend {
 					}
 
 					const shouldManage = this.shouldManageServerScopedRecord(record.data.server_id);
-					const canResolveGlobal = record.data.type === "global";
-					const canManageLifecycle = shouldManage || canResolveGlobal;
 
 					if (
-						canManageLifecycle &&
+						shouldManage &&
 						record.data.status === "awaiting_confirmation" &&
 						record.joinedAt !== undefined &&
-						now - record.joinedAt >= 2.8
+						now - record.joinedAt >= 4
 					) {
 						const player1Value = record.player1Items.reduce((sum, tuple) => {
 							const item = this.items.get(tuple[0]);
@@ -5678,7 +5639,7 @@ class LocalBackend {
 					}
 
 					if (
-						canManageLifecycle &&
+						shouldManage &&
 						record.data.status === "completed" &&
 						record.completedAt !== undefined &&
 						now - record.completedAt > 15
@@ -5729,53 +5690,6 @@ class LocalBackend {
 
 		this.syncGlobalCoinflips();
 		this.lastCoinflipUpdateAt = tick();
-	}
-
-	private cleanupCompletedCoinflips(): RouteResponse {
-		const now = os.time();
-		let removed = 0;
-
-		const [success, _, err] = this.runDataStoreWithRetry<unknown>("global_coinflips_cleanup_completed", () =>
-			this.globalCoinflipsStore.UpdateAsync("global", (existingState) => {
-				const normalizedState = this.normalizeGlobalCoinflipsState(existingState);
-				const nextCoinflips = normalizedState.coinflips ?? {};
-				let changed = false;
-
-				for (const [coinflipIdRaw, rawCoinflipRecord] of pairs(nextCoinflips)) {
-					const coinflipId = tostring(coinflipIdRaw);
-					const record = this.deserializeCoinflipRecord(rawCoinflipRecord);
-					if (!record) {
-						delete nextCoinflips[coinflipId];
-						removed += 1;
-						changed = true;
-						continue;
-					}
-
-					if (record.data.status !== "completed") continue;
-
-					const shouldManage = this.shouldManageServerScopedRecord(record.data.server_id);
-					const canResolveGlobal = record.data.type === "global";
-					if (!shouldManage && !canResolveGlobal) continue;
-
-					delete nextCoinflips[coinflipId];
-					removed += 1;
-					changed = true;
-				}
-
-				if (!changed) return $tuple(existingState);
-				normalizedState.coinflips = nextCoinflips;
-				normalizedState.updated_at = now;
-				return $tuple(normalizedState);
-			}),
-		);
-
-		if (!success) {
-			warn("[LocalBackend] Failed to cleanup completed global coinflips:", err);
-			return this.fail(500, { status: "error", message: "Failed to cleanup completed coinflips" });
-		}
-
-		this.syncGlobalCoinflips(true);
-		return this.ok({ status: "OK", removed });
 	}
 
 	private getCoinflips(): Coinflip[] {
@@ -6206,11 +6120,6 @@ class LocalBackend {
 	}
 
 	private updateCaseBattles(force = false) {
-		const now = os.time();
-		const nowMs = DateTime.now().UnixTimestampMillis;
-		const staleProgressTakeoverMs = 15_000;
-		const staleCompletedTakeoverSeconds = 30;
-
 		if (!force && tick() - this.lastCaseBattleUpdateAt < this.MINIGAME_SYNC_INTERVAL) {
 			this.syncGlobalCaseBattles();
 			return;
@@ -6223,26 +6132,17 @@ class LocalBackend {
 
 			for (const [, record] of this.caseBattles) {
 				const shouldManage = this.shouldManageServerScopedRecord(record.data.server_id);
-				const canTakeoverProgress =
-					record.data.status === "in_progress" &&
-					record.data.next_step_at !== undefined &&
-					nowMs - record.data.next_step_at > staleProgressTakeoverMs;
-				const canTakeoverCompleted =
-					record.data.status === "completed" &&
-					record.completedAt !== undefined &&
-					now - record.completedAt > staleCompletedTakeoverSeconds;
-				const canManageLifecycle = shouldManage || canTakeoverProgress || canTakeoverCompleted;
 
 				if (record.data.status !== "completed") {
 					passiveCcu += record.data.players.size();
 				}
 
-				if (canManageLifecycle && record.data.status === "in_progress") {
+				if (shouldManage && record.data.status === "in_progress") {
 					hasInProgressBattle = true;
 					break;
 				}
 
-				if (canManageLifecycle && record.data.status === "completed" && record.completedAt !== undefined) {
+				if (shouldManage && record.data.status === "completed" && record.completedAt !== undefined) {
 					hasCompletedToCleanup = true;
 				}
 			}
@@ -6259,6 +6159,8 @@ class LocalBackend {
 			}
 		}
 
+		const now = os.time();
+		const nowMs = DateTime.now().UnixTimestampMillis;
 		let ccuAfterTick = 0;
 
 		const [success, _, err] = this.runDataStoreWithRetry<unknown>("global_case_battles_tick_update", () =>
@@ -6278,20 +6180,11 @@ class LocalBackend {
 					}
 
 					const shouldManage = this.shouldManageServerScopedRecord(record.data.server_id);
-					const canTakeoverProgress =
-						record.data.status === "in_progress" &&
-						record.data.next_step_at !== undefined &&
-						nowMs - record.data.next_step_at > staleProgressTakeoverMs;
-					const canTakeoverCompleted =
-						record.data.status === "completed" &&
-						record.completedAt !== undefined &&
-						now - record.completedAt > staleCompletedTakeoverSeconds;
-					const canManageLifecycle = shouldManage || canTakeoverProgress || canTakeoverCompleted;
 
 					let stepsRemaining = record.data.cases.size() + 1;
 					while (
 						stepsRemaining > 0 &&
-						canManageLifecycle &&
+						shouldManage &&
 						record.data.status === "in_progress" &&
 						record.data.next_step_at !== undefined &&
 						nowMs >= record.data.next_step_at
@@ -6360,7 +6253,7 @@ class LocalBackend {
 					}
 
 					if (
-						canManageLifecycle &&
+						shouldManage &&
 						record.data.status === "completed" &&
 						record.completedAt !== undefined &&
 						now - record.completedAt > 20
@@ -6400,52 +6293,6 @@ class LocalBackend {
 
 		this.syncGlobalCaseBattles();
 		this.lastCaseBattleUpdateAt = tick();
-	}
-
-	private cleanupCompletedCaseBattles(): RouteResponse {
-		const now = os.time();
-		let removed = 0;
-
-		const [success, _, err] = this.runDataStoreWithRetry<unknown>("global_case_battles_cleanup_completed", () =>
-			this.globalCaseBattlesStore.UpdateAsync("global", (existingState) => {
-				const normalizedState = this.normalizeGlobalCaseBattlesState(existingState);
-				const nextBattles = normalizedState.case_battles ?? {};
-				let changed = false;
-
-				for (const [battleIdRaw, rawBattleRecord] of pairs(nextBattles)) {
-					const battleId = tostring(battleIdRaw);
-					const record = this.deserializeCaseBattleRecord(rawBattleRecord);
-					if (!record) {
-						delete nextBattles[battleId];
-						removed += 1;
-						changed = true;
-						continue;
-					}
-
-					if (record.data.status !== "completed") continue;
-
-					const shouldManage = this.shouldManageServerScopedRecord(record.data.server_id);
-					if (!shouldManage) continue;
-
-					delete nextBattles[battleId];
-					removed += 1;
-					changed = true;
-				}
-
-				if (!changed) return $tuple(existingState);
-				normalizedState.case_battles = nextBattles;
-				normalizedState.updated_at = now;
-				return $tuple(normalizedState);
-			}),
-		);
-
-		if (!success) {
-			warn("[LocalBackend] Failed to cleanup completed global case battles:", err);
-			return this.fail(500, { status: "error", message: "Failed to cleanup completed case battles" });
-		}
-
-		this.syncGlobalCaseBattles(true);
-		return this.ok({ status: "OK", removed });
 	}
 
 	private getCaseBattles() {
@@ -6806,8 +6653,12 @@ class LocalBackend {
 				if (record.data.status !== "complete") passiveCcu += record.data.members.size();
 				if (
 					shouldManage &&
-					(record.data.status === "in_progress" ||
-						(record.data.status === "waiting_for_start" && record.data.members.size() >= 1))
+					(
+						record.data.status === "in_progress" ||
+						(
+							record.data.status === "waiting_for_start" && record.data.members.size() >=1
+						)
+					)
 				) {
 					hasActivePot = true;
 					break;
@@ -8814,6 +8665,7 @@ class LocalBackend {
 		return { code, response };
 	}
 }
+
 
 const localBackend = new LocalBackend();
 export default localBackend;

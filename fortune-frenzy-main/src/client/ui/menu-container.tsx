@@ -8,6 +8,7 @@ import {
 	previousMenuAtom,
 	inventoryOverlayStateAtom,
 	isNavigationVisibleAtom,
+	menuUpscaledAtom,
 } from "client/utils/global-state";
 
 import { MarketplaceMenu } from "./menus/MarketplaceMenu";
@@ -46,6 +47,7 @@ function MenuContainer() {
 	const currentMenu = useAtom(activeMenuAtom);
 	const previousMenu = useAtom(previousMenuAtom);
 	const inventoryOverlayState = useAtom(inventoryOverlayStateAtom);
+	const menuUpscaled = useAtom(menuUpscaledAtom);
 	const [menuHolderPosition, menuHolderPositionMotion] = useMotion(new UDim2(0.5, 0, 0.5, 0));
 
 	const isMenuVisible = useCallback(
@@ -79,7 +81,7 @@ function MenuContainer() {
 	}, [currentMenu, flashMenu, menuHolderPositionMotion]);
 
 	return (
-		<MainMenusHolder position={menuHolderPosition}>
+		<MainMenusHolder position={menuHolderPosition} upscaled={menuUpscaled}>
 			<ProfilesMenu visible={isMenuVisible(MENUS.PROFILES)} flashMenu={flashMenu} key={"ProfilesMenu"} />
 			<MarketplaceMenu visible={isMenuVisible(MENUS.MARKETPLACE)} flashMenu={flashMenu} key={"MarketplaceMenu"} />
 			<TradingMenu visible={isMenuVisible(MENUS.TRADING)} flashMenu={flashMenu} key={"TradingMenu"} />

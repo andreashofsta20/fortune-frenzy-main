@@ -9,6 +9,7 @@ export const marketplaceBackContextAtom = atom<string>("marketplace");
 /** UI Effects & Overlays */
 export const overlayTransparencyAtom = atom<number>(1);
 export const isLoadingAtom = atom<boolean>(false);
+export const menuUpscaledAtom = atom<boolean>(false);
 
 /** Marketplace State */
 export const marketplaceStatusAtom = atom<string>("none");

@@ -241,6 +241,7 @@ function DailyRewardPopUpComponent({ visible, flashMenu }: Props) {
 					}}
 				/>
 				<CloseButton
+					showUpscaleButton={false}
 					native={{
 						Position: new UDim2(1, -px(24), 0, px(21)),
 						Size: new UDim2(0, px(28), 0, px(28)),

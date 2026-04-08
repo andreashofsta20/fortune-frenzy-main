@@ -225,15 +225,26 @@ export const BattlePlayer = memo(
 		useEffect(() => {
 			const container = containerRef.current;
 			const currentPull = currentSpin.currentPull;
-			if (!container || !currentPull) return;
+			if (!container || !currentPull || !currentCaseData) return;
 
 			const findWinningItem = () => {
-				const matching = (container.GetChildren() as Instance[])
-					.filter((child): child is ImageLabel => child.IsA("ImageLabel"))
-					.filter((child) => child.Name.split("#")[1] === tostring(currentPull.id) && child.LayoutOrder > 15);
+				const caseItems = currentCaseData.items;
+				if (caseItems.size() === 0) return undefined;
 
-				if (matching.size() === 0) return undefined;
-				return matching[math.random(matching.size()) - 1];
+				const matchingLayoutOrders = new Array<number>();
+				for (let i = 0; i < 150; i++) {
+					const mappedItem = caseItems[i % caseItems.size()];
+					if ((mappedItem?.id ?? "") === currentPull.id && i > 15) {
+						matchingLayoutOrders.push(i);
+					}
+				}
+
+				if (matchingLayoutOrders.size() === 0) return undefined;
+				const selectedOrder = matchingLayoutOrders[math.random(1, matchingLayoutOrders.size()) - 1];
+
+				return (container.GetChildren() as Instance[])
+					.filter((child): child is ImageLabel => child.IsA("ImageLabel"))
+					.find((child) => child.LayoutOrder === selectedOrder);
 			};
 
 			const winningItem = findWinningItem();
@@ -246,11 +257,13 @@ export const BattlePlayer = memo(
 			};
 
 			const universalTime = Workspace.GetServerTimeNow() * 1000;
-			const totalDuration = ((battleData.next_step_at ?? 0) - universalTime) / 1000 - 0.6;
+			const calculatedDuration = ((battleData.next_step_at ?? 0) - universalTime) / 1000 - 0.6;
+			const totalDuration = math.max(calculatedDuration, 1.25);
 			let cancelled = false;
 
 			const spin = () => {
 				if (cancelled) return;
+				containerFramePositionMotion.immediate(new UDim2(0, 0, 0, 0));
 
 				overlayTransparencyMotion.tween(1, {
 					time: 0.3,
@@ -287,7 +300,13 @@ export const BattlePlayer = memo(
 			return () => {
 				cancelled = true;
 			};
-		}, [currentSpin, containerRef]);
+		}, [
+			currentSpin.currentPull?.id,
+			currentCaseIndex,
+			currentCaseData?.id,
+			battleData.next_step_at,
+			playerData?.id,
+		]);
 
 		const avatarThumbnailUserId = useMemo(
 			() => resolveAvatarThumbnailUserId(playerData, tostring(Players.LocalPlayer.UserId), battleData.id),
