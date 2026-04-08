@@ -14,6 +14,9 @@ import { getCoinflipJoinValueRange } from "shared/util/coinflip-join-range";
 
 @Service()
 export class CoinflipService implements OnStart {
+	private readonly COMPLETED_CLEANUP_INTERVAL = 30;
+	private supportsGlobalCompletedCleanup = true;
+
 	constructor(
 		private PlayerManagementService: PlayerManagementService,
 		private ItemManagementService: ItemManagementService,
@@ -161,8 +164,41 @@ export class CoinflipService implements OnStart {
 				task.wait(getPollingCooldown());
 			}
 		});
+		this.startCompletedCoinflipCleanup();
 
 		log("print", `✅ [CoinflipService] Started in ${setDecimalPlaces(tick() - start_time)}s`);
+	}
+
+	private startCompletedCoinflipCleanup(): void {
+		task.spawn(async () => {
+			while (task.wait(this.COMPLETED_CLEANUP_INTERVAL)) {
+				await this.cleanupCompletedCoinflipsGlobally();
+
+				const completedCoinflipIds = this.Coinflips.filter((coinflip) => coinflip.status === "completed").map(
+					(coinflip) => coinflip.id,
+				);
+				if (completedCoinflipIds.size() === 0) continue;
+
+				this.Coinflips = this.Coinflips.filter((coinflip) => coinflip.status !== "completed");
+				Events.CoinflipsUpdated.broadcast({
+					updated: [],
+					removed: completedCoinflipIds,
+				});
+			}
+		});
+	}
+
+	private async cleanupCompletedCoinflipsGlobally(): Promise<void> {
+		if (!this.supportsGlobalCompletedCleanup) return;
+
+		try {
+			const response = await new Request("POST", "/coinflip/cleanup-completed").GetResponse();
+			if (response.Code === 404 || response.Code === 405) {
+				this.supportsGlobalCompletedCleanup = false;
+			}
+		} catch (error) {
+			log("warn", `[CoinflipService] Failed global completed cleanup: ${error}`);
+		}
 	}
 
 	async createCoinflip(

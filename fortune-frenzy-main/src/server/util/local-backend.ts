@@ -1,4 +1,4 @@
-import { DataStoreService, HttpService, Players, ServerScriptService } from "@rbxts/services";
+import { DataStoreService, HttpService, Players, RunService, ServerScriptService } from "@rbxts/services";
 import {
 	Case,
 	CaseBattleCase,
@@ -240,18 +240,18 @@ class LocalBackend {
 	private readonly itemSerialByItemId = new Map<string, number>();
 	private readonly monitoredMarketplaceSignatures = new Map<string, string>();
 	private readonly minigameStats = new Map<string, MinigameStats>();
-	private readonly persistenceStore = DataStoreService.GetDataStore("FF_LocalBackend_State_v3");
-	private readonly caseStatsStore = DataStoreService.GetDataStore("FF_LocalBackend_CaseStats_v3");
-	private readonly globalMarketplaceStore = DataStoreService.GetDataStore("FF_LocalBackend_GlobalMarketplace_v3");
-	private readonly globalTradesStore = DataStoreService.GetDataStore("FF_LocalBackend_GlobalTrades_v3");
-	private readonly globalCashChangesStore = DataStoreService.GetDataStore("FF_LocalBackend_GlobalCashChanges_v3");
-	private readonly globalCoinflipsStore = DataStoreService.GetDataStore("FF_LocalBackend_GlobalCoinflips_v3");
-	private readonly globalCaseBattlesStore = DataStoreService.GetDataStore("FF_LocalBackend_GlobalCaseBattles_v3");
-	private readonly globalJackpotsStore = DataStoreService.GetDataStore("FF_LocalBackend_GlobalJackpots_v3");
-	private readonly globalUsersStore = DataStoreService.GetDataStore("FF_LocalBackend_GlobalUsers_v3");
-	private readonly globalItemSerialsStore = DataStoreService.GetDataStore("FF_LocalBackend_GlobalItemSerials_v3");
+	private readonly persistenceStore = DataStoreService.GetDataStore("FF_LocalBackend_State_v5");
+	private readonly caseStatsStore = DataStoreService.GetDataStore("FF_LocalBackend_CaseStats_v5");
+	private readonly globalMarketplaceStore = DataStoreService.GetDataStore("FF_LocalBackend_GlobalMarketplace_v5");
+	private readonly globalTradesStore = DataStoreService.GetDataStore("FF_LocalBackend_GlobalTrades_v5");
+	private readonly globalCashChangesStore = DataStoreService.GetDataStore("FF_LocalBackend_GlobalCashChanges_v5");
+	private readonly globalCoinflipsStore = DataStoreService.GetDataStore("FF_LocalBackend_GlobalCoinflips_v5");
+	private readonly globalCaseBattlesStore = DataStoreService.GetDataStore("FF_LocalBackend_GlobalCaseBattles_v5");
+	private readonly globalJackpotsStore = DataStoreService.GetDataStore("FF_LocalBackend_GlobalJackpots_v5");
+	private readonly globalUsersStore = DataStoreService.GetDataStore("FF_LocalBackend_GlobalUsers_v5");
+	private readonly globalItemSerialsStore = DataStoreService.GetDataStore("FF_LocalBackend_GlobalItemSerials_v5");
 	private readonly globalInventoryChangesStore = DataStoreService.GetDataStore(
-		"FF_LocalBackend_GlobalInventoryChanges_v3",
+		"FF_LocalBackend_GlobalInventoryChanges_v5",
 	);
 	private readonly globalUsers = new Map<string, LocalUser>();
 	private readonly loadedUsers = new Set<string>();
@@ -260,17 +260,22 @@ class LocalBackend {
 	private readonly pendingCaseOpenIncrements = new Map<string, number>();
 	private readonly pendingInventoryGrants = new Map<string, InventoryTuple[]>();
 	private readonly dataStoreTelemetry = new Map<string, DataStoreOperationTelemetry>();
-	private readonly GLOBAL_SYNC_INTERVAL = 3;
-	private readonly GLOBAL_USERS_SYNC_INTERVAL = 5;
-	private readonly CASH_CHANGES_SYNC_INTERVAL = 1;
-	private readonly MINIGAME_SYNC_INTERVAL = 2;
+	private readonly GLOBAL_SYNC_INTERVAL = RunService.IsStudio() ? 10 : 8;
+	private readonly GLOBAL_USERS_SYNC_INTERVAL = RunService.IsStudio() ? 15 : 12;
+	private readonly CASH_CHANGES_SYNC_INTERVAL = RunService.IsStudio() ? 10 : 5;
+	private readonly MINIGAME_SYNC_INTERVAL = RunService.IsStudio() ? 2 : 4;
 	private readonly MAX_ACTIVE_JACKPOT_JOINS_PER_PLAYER = 3;
-	private readonly INVENTORY_CHANGES_SYNC_INTERVAL = 1;
+	private readonly INVENTORY_CHANGES_SYNC_INTERVAL = RunService.IsStudio() ? 10 : 5;
 	private readonly COPY_ID_AUDIT_INTERVAL = 60;
-	private readonly MINIGAME_TICK_INTERVAL = 1;
-	private readonly ACTIVE_USER_WINDOW_SECONDS = 8;
+	private readonly MINIGAME_TICK_INTERVAL = 0.7;
+	private readonly ACTIVE_USER_WINDOW_SECONDS = RunService.IsStudio() ? 30 : 20;
+	private readonly FORCE_SYNC_COOLDOWN_SECONDS = RunService.IsStudio() ? 0.5 : 2.5;
+	private readonly FORCE_SYNC_JITTER_SECONDS = RunService.IsStudio() ? 0.1 : 0.8;
+	private readonly LOOP_JITTER_RATIO = RunService.IsStudio() ? 0.05 : 0.25;
+	private readonly USER_ACTIVITY_SYNC_INTERVAL = RunService.IsStudio() ? 2 : 8;
 	private readonly ROLIMONS_RETRY_INTERVAL = 60;
 	private readonly ROLIMONS_CACHE_KEY = "rolimons_catalog_cache_v1";
+	private readonly forceSyncNextAllowedAt = new Map<string, number>();
 	private lastGlobalMarketplaceSync = 0;
 	private lastGlobalTradesSync = 0;
 	private lastGlobalCashChangesSync = 0;
@@ -282,6 +287,7 @@ class LocalBackend {
 	private lastCoinflipUpdateAt = 0;
 	private lastCaseBattleUpdateAt = 0;
 	private lastJackpotUpdateAt = 0;
+	private lastUserActivitySyncAt = 0;
 	private cachedGlobalCashChangesState: GlobalCashChangesState = {
 		changes: {},
 		updated_at: 0,
@@ -309,6 +315,7 @@ class LocalBackend {
 		this.syncGlobalJackpots(true);
 		this.syncGlobalUsers(true);
 		this.syncGlobalInventoryChanges(true);
+		this.runStartupGlobalRecoverySweep();
 
 		Players.PlayerRemoving.Connect((player) => {
 			const userId = tostring(player.UserId);
@@ -327,21 +334,25 @@ class LocalBackend {
 
 		task.spawn(() => {
 			for (;;) {
-				this.syncGlobalMarketplace();
-				this.syncGlobalTrades();
-				this.syncGlobalCashChanges();
-				this.syncGlobalUsers();
-				this.syncGlobalInventoryChanges();
-				task.wait(this.GLOBAL_SYNC_INTERVAL);
+				this.runLoopSafely("global sync", () => {
+					this.syncGlobalMarketplace();
+					this.syncGlobalTrades();
+					this.syncGlobalCashChanges();
+					this.syncGlobalUsers();
+					this.syncGlobalInventoryChanges();
+				});
+				task.wait(this.getJitteredIntervalSeconds(this.GLOBAL_SYNC_INTERVAL));
 			}
 		});
 
 		task.spawn(() => {
 			for (;;) {
-				this.updateCoinflips();
-				this.updateJackpots();
-				this.updateCaseBattles();
-				task.wait(this.MINIGAME_TICK_INTERVAL);
+				this.runLoopSafely("minigame tick", () => {
+					this.updateCoinflips();
+					this.updateJackpots();
+					this.updateCaseBattles();
+				});
+				task.wait(this.getJitteredIntervalSeconds(this.MINIGAME_TICK_INTERVAL, 0.1));
 			}
 		});
 
@@ -354,10 +365,12 @@ class LocalBackend {
 
 		task.spawn(() => {
 			for (;;) {
-				if (!this.rolimonsCatalogLoaded) {
-					this.tryHydrateRolimonsCatalog();
-				}
-				task.wait(this.ROLIMONS_RETRY_INTERVAL);
+				this.runLoopSafely("rolimons hydrate", () => {
+					if (!this.rolimonsCatalogLoaded) {
+						this.tryHydrateRolimonsCatalog();
+					}
+				});
+				task.wait(this.getJitteredIntervalSeconds(this.ROLIMONS_RETRY_INTERVAL, 0.1));
 			}
 		});
 
@@ -365,6 +378,26 @@ class LocalBackend {
 			this.flushDirtyUsers();
 			this.flushCaseStats();
 			this.syncGlobalUsers(true);
+		});
+	}
+
+	private runStartupGlobalRecoverySweep() {
+		task.defer(() => {
+			this.runLoopSafely("startup global recovery", () => {
+				// First, pull freshest global state snapshot.
+				this.syncGlobalCoinflips(true);
+				this.syncGlobalCaseBattles(true);
+				this.syncGlobalJackpots(true);
+
+				// Then force lifecycle processing so stale records recover when a server comes back online.
+				this.updateCoinflips(true);
+				this.updateCaseBattles(true);
+				this.updateJackpots(true);
+
+				// Finally, aggressively remove already-completed stale entries.
+				this.cleanupCompletedCoinflips();
+				this.cleanupCompletedCaseBattles();
+			});
 		});
 	}
 
@@ -396,8 +429,8 @@ class LocalBackend {
 	private runDataStoreWithRetry<T>(
 		operationName: string,
 		operation: () => T,
-		maxAttempts = 4,
-		baseDelaySeconds = 0.08,
+		maxAttempts = RunService.IsStudio() ? 2 : 3,
+		baseDelaySeconds = RunService.IsStudio() ? 0.2 : 0.15,
 	): [boolean, T | undefined, unknown?] {
 		const telemetry = this.getDataStoreTelemetry(operationName);
 		let lastError: unknown = undefined;
@@ -429,6 +462,65 @@ class LocalBackend {
 
 		warn(`[LocalBackend] DataStore operation '${operationName}' failed after ${maxAttempts} attempts:`, lastError);
 		return [false, undefined, lastError];
+	}
+
+	private runLoopSafely(loopLabel: string, operation: () => void) {
+		const [success, err] = pcall(operation) as LuaTuple<[boolean, unknown]>;
+		if (!success) {
+			warn(`[LocalBackend] ${loopLabel} loop iteration failed:`, err);
+		}
+	}
+
+	private getJitteredIntervalSeconds(baseSeconds: number, jitterRatio = this.LOOP_JITTER_RATIO) {
+		if (baseSeconds <= 0 || jitterRatio <= 0) return baseSeconds;
+		const jitter = baseSeconds * jitterRatio * math.random();
+		return baseSeconds + jitter;
+	}
+
+	private shouldRunSync(force: boolean, lastSyncAt: number, intervalSeconds: number, scope: string) {
+		const now = tick();
+
+		if (!force) {
+			return now - lastSyncAt >= intervalSeconds;
+		}
+
+		if (now - lastSyncAt >= intervalSeconds) {
+			return true;
+		}
+
+		const nextAllowed = this.forceSyncNextAllowedAt.get(scope) ?? 0;
+		if (now < nextAllowed) {
+			return false;
+		}
+
+		const cooldown = this.FORCE_SYNC_COOLDOWN_SECONDS + math.random() * this.FORCE_SYNC_JITTER_SECONDS;
+		this.forceSyncNextAllowedAt.set(scope, now + cooldown);
+		return true;
+	}
+
+	private shouldManageServerScopedRecord(serverId: string) {
+		if (serverId === "global") return true;
+
+		const currentServerId = this.getCurrentServerId();
+		if (serverId === currentServerId) return true;
+
+		if (RunService.IsStudio() && serverId === "LOCAL_SERVER") return true;
+		return false;
+	}
+
+	private shouldManageJackpotRecord(record: JackpotRecord) {
+		if (record.data.server_id !== "global") {
+			return this.shouldManageServerScopedRecord(record.data.server_id);
+		}
+
+		for (const member of record.data.members) {
+			const memberId = this.toNumber(member.player.id, 0);
+			if (memberId > 0 && Players.GetPlayerByUserId(memberId)) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	private recordDataStoreContention(operationName: string) {
@@ -549,7 +641,8 @@ class LocalBackend {
 	}
 
 	private syncGlobalMarketplace(force = false) {
-		if (!force && tick() - this.lastGlobalMarketplaceSync < this.GLOBAL_SYNC_INTERVAL) return;
+		if (!this.shouldRunSync(force, this.lastGlobalMarketplaceSync, this.GLOBAL_SYNC_INTERVAL, "marketplace"))
+			return;
 
 		const [success, rawState, err] = this.runDataStoreWithRetry<unknown>("global_marketplace_get", () =>
 			this.globalMarketplaceStore.GetAsync("global"),
@@ -646,7 +739,7 @@ class LocalBackend {
 	}
 
 	private syncGlobalTrades(force = false) {
-		if (!force && tick() - this.lastGlobalTradesSync < this.GLOBAL_SYNC_INTERVAL) return;
+		if (!this.shouldRunSync(force, this.lastGlobalTradesSync, this.GLOBAL_SYNC_INTERVAL, "trades")) return;
 
 		const [success, rawState, err] = this.runDataStoreWithRetry<unknown>("global_trades_get", () =>
 			this.globalTradesStore.GetAsync("global"),
@@ -698,7 +791,11 @@ class LocalBackend {
 	}
 
 	private syncGlobalCashChanges(force = false) {
-		if (!force && tick() - this.lastGlobalCashChangesSync < this.CASH_CHANGES_SYNC_INTERVAL) return;
+		if (
+			!this.shouldRunSync(force, this.lastGlobalCashChangesSync, this.CASH_CHANGES_SYNC_INTERVAL, "cash_changes")
+		) {
+			return;
+		}
 
 		const [success, rawState, err] = this.runDataStoreWithRetry<unknown>("global_cash_changes_get", () =>
 			this.globalCashChangesStore.GetAsync("global"),
@@ -814,6 +911,17 @@ class LocalBackend {
 				for (const [coinflipId, rawCoinflipRecord] of pairs(state.coinflips)) {
 					const coinflipRecord = this.deserializeCoinflipRecord(rawCoinflipRecord);
 					if (!coinflipRecord) continue;
+					const now = os.time();
+					const completedAt =
+						typeIs(rawCoinflipRecord, "table") && typeIs(rawCoinflipRecord.completed_at, "number")
+							? math.floor(rawCoinflipRecord.completed_at)
+							: 0;
+					if (
+						coinflipRecord.data.status === "completed" &&
+						now - completedAt > 10 // wait 10s before removing
+					) {
+						continue; // skip adding = deletes it from sync
+					}
 					coinflips[tostring(coinflipId)] = this.serializeCoinflipRecord(coinflipRecord);
 					nextAutoId = math.max(nextAutoId, (coinflipRecord.data.auto_id ?? 0) + 1);
 				}
@@ -828,7 +936,9 @@ class LocalBackend {
 	}
 
 	private syncGlobalCoinflips(force = false) {
-		if (!force && tick() - this.lastGlobalCoinflipsSync < this.MINIGAME_SYNC_INTERVAL) return;
+		if (!this.shouldRunSync(force, this.lastGlobalCoinflipsSync, this.MINIGAME_SYNC_INTERVAL, "coinflips")) {
+			return;
+		}
 
 		const [success, rawState, err] = this.runDataStoreWithRetry<unknown>("global_coinflips_get", () =>
 			this.globalCoinflipsStore.GetAsync("global"),
@@ -976,6 +1086,7 @@ class LocalBackend {
 
 		if (typeIs(rawState, "table")) {
 			const state = rawState as GlobalCaseBattlesState;
+
 			if (typeIs(state.updated_at, "number")) {
 				updatedAt = state.updated_at;
 			}
@@ -984,6 +1095,17 @@ class LocalBackend {
 				for (const [battleId, rawCaseBattleRecord] of pairs(state.case_battles)) {
 					const caseBattleRecord = this.deserializeCaseBattleRecord(rawCaseBattleRecord);
 					if (!caseBattleRecord) continue;
+
+					const now = os.time();
+					const completedAt = caseBattleRecord.data.completed_at ?? 0;
+
+					if (
+						caseBattleRecord.data.status === "completed" &&
+						now - completedAt > 10 // wait 10s before removing
+					) {
+						continue; // ❌ skip adding = deletes it from sync
+					}
+
 					caseBattles[tostring(battleId)] = this.serializeCaseBattleRecord(caseBattleRecord);
 				}
 			}
@@ -996,7 +1118,8 @@ class LocalBackend {
 	}
 
 	private syncGlobalCaseBattles(force = false) {
-		if (!force && tick() - this.lastGlobalCaseBattlesSync < this.MINIGAME_SYNC_INTERVAL) return;
+		if (!this.shouldRunSync(force, this.lastGlobalCaseBattlesSync, this.MINIGAME_SYNC_INTERVAL, "case_battles"))
+			return;
 
 		const [success, rawState, err] = this.runDataStoreWithRetry<unknown>("global_case_battles_get", () =>
 			this.globalCaseBattlesStore.GetAsync("global"),
@@ -1149,6 +1272,17 @@ class LocalBackend {
 				for (const [jackpotId, rawJackpotRecord] of pairs(state.jackpots)) {
 					const jackpotRecord = this.deserializeJackpotRecord(rawJackpotRecord);
 					if (!jackpotRecord) continue;
+					const now = os.time();
+					const completedAt =
+						typeIs(rawJackpotRecord, "table") && typeIs(rawJackpotRecord.completed_at, "number")
+							? math.floor(rawJackpotRecord.completed_at)
+							: 0;
+					if (
+						jackpotRecord.data.status === "complete" &&
+						now - completedAt > 10 // wait 10s before removing
+					) {
+						continue; // skip adding = deletes it from sync
+					}
 					jackpots[tostring(jackpotId)] = this.serializeJackpotRecord(jackpotRecord);
 				}
 			}
@@ -1161,7 +1295,9 @@ class LocalBackend {
 	}
 
 	private syncGlobalJackpots(force = false) {
-		if (!force && tick() - this.lastGlobalJackpotsSync < this.MINIGAME_SYNC_INTERVAL) return;
+		if (!this.shouldRunSync(force, this.lastGlobalJackpotsSync, this.MINIGAME_SYNC_INTERVAL, "jackpots")) {
+			return;
+		}
 
 		const [success, rawState, err] = this.runDataStoreWithRetry<unknown>("global_jackpots_get", () =>
 			this.globalJackpotsStore.GetAsync("global"),
@@ -1213,7 +1349,15 @@ class LocalBackend {
 	}
 
 	private syncGlobalInventoryChanges(force = false) {
-		if (!force && tick() - this.lastGlobalInventoryChangesSync < this.INVENTORY_CHANGES_SYNC_INTERVAL) return;
+		if (
+			!this.shouldRunSync(
+				force,
+				this.lastGlobalInventoryChangesSync,
+				this.INVENTORY_CHANGES_SYNC_INTERVAL,
+				"inventory_changes",
+			)
+		)
+			return;
 
 		const [success, rawState, err] = this.runDataStoreWithRetry<unknown>("global_inventory_changes_get", () =>
 			this.globalInventoryChangesStore.GetAsync("global"),
@@ -1263,7 +1407,7 @@ class LocalBackend {
 	}
 
 	private syncGlobalUsers(force = false) {
-		if (!force && tick() - this.lastGlobalUsersSync < this.GLOBAL_USERS_SYNC_INTERVAL) return;
+		if (!this.shouldRunSync(force, this.lastGlobalUsersSync, this.GLOBAL_USERS_SYNC_INTERVAL, "users")) return;
 
 		const pendingIds = new Array<string>();
 		const pendingUpdates = {} as Record<string, LocalUser>;
@@ -1823,6 +1967,10 @@ class LocalBackend {
 			return this.callBotCoinflip(segments[3], tostring(payload.user_id ?? 0));
 		}
 
+		if (method === "POST" && path === "/coinflip/cleanup-completed") {
+			return this.cleanupCompletedCoinflips();
+		}
+
 		if (method === "GET" && path === "/casebattles") {
 			return this.ok({
 				status: "OK",
@@ -1860,6 +2008,10 @@ class LocalBackend {
 					client_seed?: string;
 				}) ?? {};
 			return this.joinCaseBattle(segments[3], payload);
+		}
+
+		if (method === "POST" && path === "/casebattles/cleanup-completed") {
+			return this.cleanupCompletedCaseBattles();
 		}
 
 		if (method === "GET" && path === "/jackpot/pots") {
@@ -4939,7 +5091,7 @@ class LocalBackend {
 			status: "OK",
 			result: {
 				game_open: true,
-				paycheck: 15000,
+				paycheck: 25000,
 				polling_cooldown: 0.6,
 				dailywheel: {
 					rewards: [
@@ -5425,6 +5577,42 @@ class LocalBackend {
 			return;
 		}
 
+		if (!force) {
+			let hasPendingResolution = false;
+			let hasCompletedToCleanup = false;
+			let passiveCcu = 0;
+
+			for (const [, record] of this.coinflips) {
+				const shouldManage = this.shouldManageServerScopedRecord(record.data.server_id);
+				const canResolveGlobal = record.data.type === "global";
+				const canManageLifecycle = shouldManage || canResolveGlobal;
+
+				if (canManageLifecycle && record.data.status === "awaiting_confirmation") {
+					hasPendingResolution = true;
+					break;
+				}
+
+				if (canManageLifecycle && record.data.status === "completed" && record.completedAt !== undefined) {
+					hasCompletedToCleanup = true;
+				}
+
+				if (record.data.status === "waiting_for_player") {
+					passiveCcu += 1;
+				}
+			}
+
+			if (!hasPendingResolution && !hasCompletedToCleanup) {
+				const minigame = this.minigameStats.get("Coinflip");
+				if (minigame) {
+					minigame.current_ccu = passiveCcu;
+				}
+
+				this.syncGlobalCoinflips();
+				this.lastCoinflipUpdateAt = tick();
+				return;
+			}
+		}
+
 		const now = os.time();
 		let payoutEvents = new Array<{ winnerId: string; items: InventoryTuple[]; totalValue: number }>();
 		let ccuAfterTick = 0;
@@ -5446,10 +5634,15 @@ class LocalBackend {
 						continue;
 					}
 
+					const shouldManage = this.shouldManageServerScopedRecord(record.data.server_id);
+					const canResolveGlobal = record.data.type === "global";
+					const canManageLifecycle = shouldManage || canResolveGlobal;
+
 					if (
+						canManageLifecycle &&
 						record.data.status === "awaiting_confirmation" &&
 						record.joinedAt !== undefined &&
-						now - record.joinedAt >= 4
+						now - record.joinedAt >= 2.8
 					) {
 						const player1Value = record.player1Items.reduce((sum, tuple) => {
 							const item = this.items.get(tuple[0]);
@@ -5485,6 +5678,7 @@ class LocalBackend {
 					}
 
 					if (
+						canManageLifecycle &&
 						record.data.status === "completed" &&
 						record.completedAt !== undefined &&
 						now - record.completedAt > 15
@@ -5533,8 +5727,55 @@ class LocalBackend {
 			});
 		}
 
-		this.syncGlobalCoinflips(true);
+		this.syncGlobalCoinflips();
 		this.lastCoinflipUpdateAt = tick();
+	}
+
+	private cleanupCompletedCoinflips(): RouteResponse {
+		const now = os.time();
+		let removed = 0;
+
+		const [success, _, err] = this.runDataStoreWithRetry<unknown>("global_coinflips_cleanup_completed", () =>
+			this.globalCoinflipsStore.UpdateAsync("global", (existingState) => {
+				const normalizedState = this.normalizeGlobalCoinflipsState(existingState);
+				const nextCoinflips = normalizedState.coinflips ?? {};
+				let changed = false;
+
+				for (const [coinflipIdRaw, rawCoinflipRecord] of pairs(nextCoinflips)) {
+					const coinflipId = tostring(coinflipIdRaw);
+					const record = this.deserializeCoinflipRecord(rawCoinflipRecord);
+					if (!record) {
+						delete nextCoinflips[coinflipId];
+						removed += 1;
+						changed = true;
+						continue;
+					}
+
+					if (record.data.status !== "completed") continue;
+
+					const shouldManage = this.shouldManageServerScopedRecord(record.data.server_id);
+					const canResolveGlobal = record.data.type === "global";
+					if (!shouldManage && !canResolveGlobal) continue;
+
+					delete nextCoinflips[coinflipId];
+					removed += 1;
+					changed = true;
+				}
+
+				if (!changed) return $tuple(existingState);
+				normalizedState.coinflips = nextCoinflips;
+				normalizedState.updated_at = now;
+				return $tuple(normalizedState);
+			}),
+		);
+
+		if (!success) {
+			warn("[LocalBackend] Failed to cleanup completed global coinflips:", err);
+			return this.fail(500, { status: "error", message: "Failed to cleanup completed coinflips" });
+		}
+
+		this.syncGlobalCoinflips(true);
+		return this.ok({ status: "OK", removed });
 	}
 
 	private getCoinflips(): Coinflip[] {
@@ -5596,7 +5837,7 @@ class LocalBackend {
 				const now = os.time();
 				const battle: CaseBattleData = {
 					id: battleId,
-					server_id: payload.server_id ?? "LOCAL_SERVER",
+					server_id: payload.server_id ?? this.getCurrentServerId(),
 					server_seed: HttpService.GenerateGUID(false),
 					team_mode: payload.team_mode ?? "1v1",
 					crazy: payload.crazy ?? false,
@@ -5965,13 +6206,59 @@ class LocalBackend {
 	}
 
 	private updateCaseBattles(force = false) {
+		const now = os.time();
+		const nowMs = DateTime.now().UnixTimestampMillis;
+		const staleProgressTakeoverMs = 15_000;
+		const staleCompletedTakeoverSeconds = 30;
+
 		if (!force && tick() - this.lastCaseBattleUpdateAt < this.MINIGAME_SYNC_INTERVAL) {
 			this.syncGlobalCaseBattles();
 			return;
 		}
 
-		const now = os.time();
-		const nowMs = DateTime.now().UnixTimestampMillis;
+		if (!force) {
+			let hasInProgressBattle = false;
+			let hasCompletedToCleanup = false;
+			let passiveCcu = 0;
+
+			for (const [, record] of this.caseBattles) {
+				const shouldManage = this.shouldManageServerScopedRecord(record.data.server_id);
+				const canTakeoverProgress =
+					record.data.status === "in_progress" &&
+					record.data.next_step_at !== undefined &&
+					nowMs - record.data.next_step_at > staleProgressTakeoverMs;
+				const canTakeoverCompleted =
+					record.data.status === "completed" &&
+					record.completedAt !== undefined &&
+					now - record.completedAt > staleCompletedTakeoverSeconds;
+				const canManageLifecycle = shouldManage || canTakeoverProgress || canTakeoverCompleted;
+
+				if (record.data.status !== "completed") {
+					passiveCcu += record.data.players.size();
+				}
+
+				if (canManageLifecycle && record.data.status === "in_progress") {
+					hasInProgressBattle = true;
+					break;
+				}
+
+				if (canManageLifecycle && record.data.status === "completed" && record.completedAt !== undefined) {
+					hasCompletedToCleanup = true;
+				}
+			}
+
+			if (!hasInProgressBattle && !hasCompletedToCleanup) {
+				const minigame = this.minigameStats.get("CaseBattles");
+				if (minigame) {
+					minigame.current_ccu = passiveCcu;
+				}
+
+				this.syncGlobalCaseBattles();
+				this.lastCaseBattleUpdateAt = tick();
+				return;
+			}
+		}
+
 		let ccuAfterTick = 0;
 
 		const [success, _, err] = this.runDataStoreWithRetry<unknown>("global_case_battles_tick_update", () =>
@@ -5990,9 +6277,21 @@ class LocalBackend {
 						continue;
 					}
 
+					const shouldManage = this.shouldManageServerScopedRecord(record.data.server_id);
+					const canTakeoverProgress =
+						record.data.status === "in_progress" &&
+						record.data.next_step_at !== undefined &&
+						nowMs - record.data.next_step_at > staleProgressTakeoverMs;
+					const canTakeoverCompleted =
+						record.data.status === "completed" &&
+						record.completedAt !== undefined &&
+						now - record.completedAt > staleCompletedTakeoverSeconds;
+					const canManageLifecycle = shouldManage || canTakeoverProgress || canTakeoverCompleted;
+
 					let stepsRemaining = record.data.cases.size() + 1;
 					while (
 						stepsRemaining > 0 &&
+						canManageLifecycle &&
 						record.data.status === "in_progress" &&
 						record.data.next_step_at !== undefined &&
 						nowMs >= record.data.next_step_at
@@ -6061,6 +6360,7 @@ class LocalBackend {
 					}
 
 					if (
+						canManageLifecycle &&
 						record.data.status === "completed" &&
 						record.completedAt !== undefined &&
 						now - record.completedAt > 20
@@ -6098,8 +6398,54 @@ class LocalBackend {
 			minigame.current_ccu = ccuAfterTick;
 		}
 
-		this.syncGlobalCaseBattles(true);
+		this.syncGlobalCaseBattles();
 		this.lastCaseBattleUpdateAt = tick();
+	}
+
+	private cleanupCompletedCaseBattles(): RouteResponse {
+		const now = os.time();
+		let removed = 0;
+
+		const [success, _, err] = this.runDataStoreWithRetry<unknown>("global_case_battles_cleanup_completed", () =>
+			this.globalCaseBattlesStore.UpdateAsync("global", (existingState) => {
+				const normalizedState = this.normalizeGlobalCaseBattlesState(existingState);
+				const nextBattles = normalizedState.case_battles ?? {};
+				let changed = false;
+
+				for (const [battleIdRaw, rawBattleRecord] of pairs(nextBattles)) {
+					const battleId = tostring(battleIdRaw);
+					const record = this.deserializeCaseBattleRecord(rawBattleRecord);
+					if (!record) {
+						delete nextBattles[battleId];
+						removed += 1;
+						changed = true;
+						continue;
+					}
+
+					if (record.data.status !== "completed") continue;
+
+					const shouldManage = this.shouldManageServerScopedRecord(record.data.server_id);
+					if (!shouldManage) continue;
+
+					delete nextBattles[battleId];
+					removed += 1;
+					changed = true;
+				}
+
+				if (!changed) return $tuple(existingState);
+				normalizedState.case_battles = nextBattles;
+				normalizedState.updated_at = now;
+				return $tuple(normalizedState);
+			}),
+		);
+
+		if (!success) {
+			warn("[LocalBackend] Failed to cleanup completed global case battles:", err);
+			return this.fail(500, { status: "error", message: "Failed to cleanup completed case battles" });
+		}
+
+		this.syncGlobalCaseBattles(true);
+		return this.ok({ status: "OK", removed });
 	}
 
 	private getCaseBattles() {
@@ -6124,7 +6470,7 @@ class LocalBackend {
 		const creatorId = tostring(payload.creator ?? 0);
 		if (creatorId === "0") return this.fail(400, { status: "error", message: "Invalid creator" });
 
-		const requestedServerId = tostring(payload.server_id ?? "LOCAL_SERVER");
+		const requestedServerId = tostring(payload.server_id ?? this.getCurrentServerId());
 		if (requestedServerId === "global") {
 			return this.fail(403, {
 				status: "error",
@@ -6449,6 +6795,57 @@ class LocalBackend {
 			return;
 		}
 
+		if (!force) {
+			let hasActivePot = false;
+			let hasCompletedToCleanup = false;
+			let passiveCcu = 0;
+			const currentServerId = this.getCurrentServerId();
+
+			for (const [, record] of this.jackpots) {
+				const shouldManage = this.shouldManageJackpotRecord(record);
+				if (record.data.status !== "complete") passiveCcu += record.data.members.size();
+				if (
+					shouldManage &&
+					(record.data.status === "in_progress" ||
+						(record.data.status === "waiting_for_start" && record.data.members.size() >= 1))
+				) {
+					hasActivePot = true;
+					break;
+				}
+
+				if (shouldManage && record.data.status === "complete" && record.completedAt !== undefined) {
+					hasCompletedToCleanup = true;
+				}
+			}
+
+			// Check if any system/global pots are missing
+			{
+				const missingSystemPot = ([50000, 250000, 1000000, JACKPOT_INFINITY_VALUE_CAP] as const).some((cap) => {
+					for (const [, r] of this.jackpots) {
+						const matches =
+							r.data.is_system_pot &&
+							r.data.server_id === currentServerId &&
+							r.data.value_cap === cap &&
+							r.data.status !== "complete";
+
+						if (matches) {
+							return false;
+						}
+					}
+
+					return true;
+				});
+
+				if (!hasActivePot && !missingSystemPot && !hasCompletedToCleanup) {
+					const minigame = this.minigameStats.get("Jackpot");
+					if (minigame) minigame.current_ccu = passiveCcu;
+					this.syncGlobalJackpots();
+					this.lastJackpotUpdateAt = tick();
+					return;
+				}
+			}
+		}
+
 		const now = os.time();
 		let payoutEvents = new Array<{ winnerId: string; items: InventoryTuple[] }>();
 		let ccuAfterTick = 0;
@@ -6470,13 +6867,16 @@ class LocalBackend {
 						continue;
 					}
 
-					if (record.data.server_id === "global" && (record.data.value_floor ?? 0) > 0) {
+					const shouldManage = this.shouldManageJackpotRecord(record);
+
+					if (shouldManage && record.data.server_id === "global" && (record.data.value_floor ?? 0) > 0) {
 						record.data.value_floor = 0;
 						record.data.updated_at = now;
 						changed = true;
 					}
 
 					if (
+						shouldManage &&
 						record.data.status === "waiting_for_start" &&
 						record.data.members.size() >= 1 &&
 						record.data.auto_start_at === undefined
@@ -6492,6 +6892,7 @@ class LocalBackend {
 
 					const startAt = record.data.auto_start_at ?? record.data.countdown_end_at;
 					if (
+						shouldManage &&
 						record.data.status === "waiting_for_start" &&
 						startAt !== undefined &&
 						now >= startAt &&
@@ -6507,6 +6908,7 @@ class LocalBackend {
 					}
 
 					if (
+						shouldManage &&
 						record.data.status === "in_progress" &&
 						record.inProgressAt !== undefined &&
 						now - record.inProgressAt >= 4
@@ -6545,6 +6947,7 @@ class LocalBackend {
 					record.data.leaveable = this.canLeaveJackpot(record.data, now);
 
 					if (
+						shouldManage &&
 						record.data.status === "complete" &&
 						record.completedAt !== undefined &&
 						now - record.completedAt > 20
@@ -6587,7 +6990,7 @@ class LocalBackend {
 			minigame.current_ccu = ccuAfterTick;
 		}
 
-		this.syncGlobalJackpots(true);
+		this.syncGlobalJackpots();
 		this.lastJackpotUpdateAt = tick();
 	}
 
@@ -7035,7 +7438,10 @@ class LocalBackend {
 		const userIdNumber = this.toNumber(userId, 0);
 		if (userIdNumber > 0 && Players.GetPlayerByUserId(userIdNumber)) return true;
 
-		this.syncGlobalUsers(true);
+		if (tick() - this.lastUserActivitySyncAt >= this.USER_ACTIVITY_SYNC_INTERVAL) {
+			this.syncGlobalUsers();
+			this.lastUserActivitySyncAt = tick();
+		}
 
 		const globalUser = this.globalUsers.get(userId);
 		if (!globalUser) return false;
@@ -7052,7 +7458,7 @@ class LocalBackend {
 
 	private searchUsers(query: Record<string, string>): RouteResponse {
 		this.ensureActivePlayersLoaded();
-		this.syncGlobalUsers(true);
+		this.syncGlobalUsers();
 
 		const rawKeywords = query.keywords ?? "";
 		const keywords = rawKeywords.lower();

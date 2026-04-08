@@ -24,6 +24,8 @@ export class TradingService implements OnStart {
 	private sentNotifications = new Set<string>();
 	private readonly CLEANUP_INTERVAL = 300; // 5 minutes
 	private readonly NOTIFICATION_EXPIRY = 3600; // 1 hour in seconds
+	private readonly MAX_TRADE_UNIQUE_ITEMS = 8;
+	private readonly MAX_TRADE_ITEM_QUANTITY = 999;
 
 	constructor(
 		private playerManagementService: PlayerManagementService,
@@ -86,6 +88,48 @@ export class TradingService implements OnStart {
 		}
 
 		return selectedUAIDs;
+	}
+
+	private validateAndNormalizeTradeItems(
+		requestedItems: Record<string, number>,
+		label: string,
+	): LuaTuple<[Record<string, number> | undefined, string | undefined]> {
+		const normalized = {} as Record<string, number>;
+		let uniqueItemCount = 0;
+
+		for (const [rawItemId, rawCount] of pairs(requestedItems)) {
+			const itemId = tostring(rawItemId ?? "");
+			if (itemId.size() === 0) continue;
+
+			const count = math.max(0, math.floor(tonumber(rawCount) ?? 0));
+			if (count <= 0) continue;
+
+			if (count > this.MAX_TRADE_ITEM_QUANTITY) {
+				return $tuple(
+					undefined,
+					`${label} cannot include more than ${this.MAX_TRADE_ITEM_QUANTITY} copies of one item`,
+				);
+			}
+
+			if (normalized[itemId] !== undefined) continue;
+
+			uniqueItemCount += 1;
+			if (uniqueItemCount > this.MAX_TRADE_UNIQUE_ITEMS) {
+				return $tuple(undefined, `${label} can only include ${this.MAX_TRADE_UNIQUE_ITEMS} unique items`);
+			}
+
+			normalized[itemId] = count;
+		}
+
+		return $tuple(normalized, undefined);
+	}
+
+	private hasRequestedTradeItems(itemCounts: Record<string, number>) {
+		for (const [, quantity] of pairs(itemCounts)) {
+			if ((quantity as number) > 0) return true;
+		}
+
+		return false;
 	}
 
 	private upsertLocalTrade(trade: Trade): string | undefined {
@@ -279,6 +323,29 @@ export class TradingService implements OnStart {
 		initiatorItems: { [itemId: string]: number },
 		receiverItems: { [itemId: string]: number },
 	): Promise<{ status: string; message?: string; code?: number | string }> {
+		const [normalizedInitiatorItems, initiatorValidationError] = this.validateAndNormalizeTradeItems(
+			initiatorItems,
+			"Your offer",
+		);
+		if (!normalizedInitiatorItems) {
+			return { status: "error", code: 400, message: initiatorValidationError ?? "Invalid initiator items" };
+		}
+
+		const [normalizedReceiverItems, receiverValidationError] = this.validateAndNormalizeTradeItems(
+			receiverItems,
+			"Your requested offer",
+		);
+		if (!normalizedReceiverItems) {
+			return { status: "error", code: 400, message: receiverValidationError ?? "Invalid receiver items" };
+		}
+
+		if (
+			!this.hasRequestedTradeItems(normalizedInitiatorItems) ||
+			!this.hasRequestedTradeItems(normalizedReceiverItems)
+		) {
+			return { status: "error", code: 400, message: "Both sides must include at least one item" };
+		}
+
 		const sessionProfile = this.playerManagementService.getSessionOnlyProfile(initiator);
 		if (!sessionProfile) return { status: "error", code: 400, message: "Profile not found" };
 		if (receiver_id === initiator.UserId) {
@@ -305,7 +372,7 @@ export class TradingService implements OnStart {
 			this.itemManagementService,
 			this.playerManagementService,
 			initiator,
-			initiatorItems,
+			normalizedInitiatorItems,
 		);
 		if (initiatorSelectedUAIDs.size() === 0) {
 			return {
@@ -321,11 +388,11 @@ export class TradingService implements OnStart {
 				this.itemManagementService,
 				this.playerManagementService,
 				receiverPlayer,
-				receiverItems,
+				normalizedReceiverItems,
 			);
 		} else {
 			const receiverInventory = await this.playerManagementService.getOfflineUserInventory(receiver_id);
-			receiverSelectedUAIDs = this.selectUAIDsFromItemCounts(receiverInventory, receiverItems);
+			receiverSelectedUAIDs = this.selectUAIDsFromItemCounts(receiverInventory, normalizedReceiverItems);
 		}
 
 		if (!receiverSelectedUAIDs || receiverSelectedUAIDs.size() === 0) {
@@ -337,8 +404,8 @@ export class TradingService implements OnStart {
 			receiver_id: tostring(receiver_id),
 			initiator_items: initiatorSelectedUAIDs,
 			receiver_items: receiverSelectedUAIDs,
-			initiator_item_counts: initiatorItems,
-			receiver_item_counts: receiverItems,
+			initiator_item_counts: normalizedInitiatorItems,
+			receiver_item_counts: normalizedReceiverItems,
 		}).GetResponse();
 
 		if (createResponse.Code !== 200) {

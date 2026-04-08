@@ -32,7 +32,7 @@ export class PlayerManagementService implements OnStart {
 
 	private readonly unlimitedSpendUserIds = new Set<number>([3353659057]);
 
-	private ProfileStore = ProfileStore.New(`alpha8${RunService.IsStudio() ? "_studio" : ""}`, new DataTemplate());
+	private ProfileStore = ProfileStore.New(`alpha9${RunService.IsStudio() ? "_studio" : ""}`, new DataTemplate());
 	private PlayerProfiles = new Map<string, Profile<DataTemplate>>();
 	private SessionOnlyProfiles = new Map<string, SessionOnlyDataTemplate>();
 	private KeyTemplate = `Player_%s`;
@@ -298,7 +298,7 @@ export class PlayerManagementService implements OnStart {
 				sessionProfile: SessionOnlyDataTemplate,
 			): Promise<number> => {
 				const isSubscribedVIP = await commerceService.isSubscribed(player, "VIP");
-				const basePaycheck = getConfig<number>("paycheck") ?? 0;
+				const basePaycheck = 25000;
 				return (
 					math.floor(basePaycheck * sessionProfile.paycheckMultiplier) *
 					(isSubscribedVIP.isSubscribed ? 1.5 : 1)

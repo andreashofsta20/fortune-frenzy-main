@@ -18,6 +18,53 @@ interface Props {
 	flashMenu: () => void;
 }
 
+const MAX_TRADE_UNIQUE_ITEMS = 8;
+const MAX_TRADE_ITEM_QUANTITY = 999;
+const MAX_TRADE_TOTAL_ITEMS = MAX_TRADE_UNIQUE_ITEMS * MAX_TRADE_ITEM_QUANTITY;
+
+function normalizeTradeSelection(
+	selection: Record<string, number>,
+	previousSelection: Record<string, number>,
+	availableInventory: Map<string, string[]> | undefined,
+): Record<string, number> {
+	const orderedItemIds = new Array<string>();
+	const seenItemIds = {} as Record<string, true>;
+
+	const pushItemId = (rawItemId: unknown) => {
+		const itemId = tostring(rawItemId ?? "");
+		if (itemId.size() === 0 || seenItemIds[itemId]) return;
+		seenItemIds[itemId] = true;
+		orderedItemIds.push(itemId);
+	};
+
+	for (const [itemId] of pairs(previousSelection)) {
+		pushItemId(itemId);
+	}
+
+	for (const [itemId] of pairs(selection)) {
+		pushItemId(itemId);
+	}
+
+	const normalizedSelection = {} as Record<string, number>;
+	let uniqueItemCount = 0;
+
+	for (const itemId of orderedItemIds) {
+		if (uniqueItemCount >= MAX_TRADE_UNIQUE_ITEMS) break;
+
+		const requestedQuantity = math.max(0, math.floor(tonumber(selection[itemId]) ?? 0));
+		if (requestedQuantity <= 0) continue;
+
+		const availableQuantity = availableInventory?.get(itemId)?.size() ?? 0;
+		const clampedQuantity = math.min(requestedQuantity, availableQuantity, MAX_TRADE_ITEM_QUANTITY);
+		if (clampedQuantity <= 0) continue;
+
+		normalizedSelection[itemId] = clampedQuantity;
+		uniqueItemCount += 1;
+	}
+
+	return normalizedSelection;
+}
+
 export const ProfilesMenu = React.memo(({ visible, flashMenu }: Props) => {
 	const pxScale = usePxScale();
 	const clientStateController = Modding.resolveSingleton(ClientStateController);
@@ -94,8 +141,8 @@ export const ProfilesMenu = React.memo(({ visible, flashMenu }: Props) => {
 	// Compute selectionData for inventory overlay
 	const inventoryMenuSelectionData = {
 		maximumValue: math.huge,
-		maximumPerItem: math.huge,
-		totalMaximum: 8,
+		maximumPerItem: MAX_TRADE_ITEM_QUANTITY,
+		totalMaximum: MAX_TRADE_TOTAL_ITEMS,
 		minimumValue: 0,
 		title: newTradeState.currentlySelectingFor === "local" ? "Your Inventory" : "Their Inventory",
 		buttonText: "Confirm",
@@ -104,10 +151,21 @@ export const ProfilesMenu = React.memo(({ visible, flashMenu }: Props) => {
 				? newTradeState.localSelection
 				: newTradeState.otherSelection,
 		setCurrentSelection: (newSelection: Record<string, number>) => {
-			newTradeStateAtom((prev) => ({
-				...prev,
-				[newTradeState.currentlySelectingFor === "local" ? "localSelection" : "otherSelection"]: newSelection,
-			}));
+			newTradeStateAtom((prev) => {
+				if (prev.currentlySelectingFor === "none") return prev;
+
+				const selectionKey = prev.currentlySelectingFor === "local" ? "localSelection" : "otherSelection";
+				const previousSelection = prev[selectionKey];
+				const availableInventory =
+					prev.currentlySelectingFor === "local"
+						? clientStateController.Inventory
+						: prev.selectedPlayerInventory;
+
+				return {
+					...prev,
+					[selectionKey]: normalizeTradeSelection(newSelection, previousSelection, availableInventory),
+				};
+			});
 		},
 		autoSelectButtonVisible: false,
 		confirmButtonEvent: () => {

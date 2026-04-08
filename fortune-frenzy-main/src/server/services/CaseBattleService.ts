@@ -12,6 +12,9 @@ import getPollingCooldown from "server/util/get-polling-cooldown";
 
 @Service()
 export class CaseBattleService implements OnStart {
+	private readonly COMPLETED_CLEANUP_INTERVAL = 30;
+	private supportsGlobalCompletedCleanup = true;
+
 	constructor(
 		private PlayerManagementService: PlayerManagementService,
 		private ItemManagementService: ItemManagementService,
@@ -33,6 +36,7 @@ export class CaseBattleService implements OnStart {
 		}
 		print("[CASEBATTLES] Refreshed cases", this.CaseBattleCases);
 		this.startCaseBattlePolling();
+		this.startCompletedCaseBattleCleanup();
 		log("print", `✅ [CaseBattleService] Started in ${setDecimalPlaces(tick() - startTime)}s`);
 	}
 
@@ -59,6 +63,38 @@ export class CaseBattleService implements OnStart {
 				task.wait(getPollingCooldown());
 			}
 		});
+	}
+
+	private startCompletedCaseBattleCleanup(): void {
+		task.spawn(async () => {
+			while (task.wait(this.COMPLETED_CLEANUP_INTERVAL)) {
+				await this.cleanupCompletedCaseBattlesGlobally();
+
+				const completedBattleIds = this.CaseBattles.filter((battle) => battle.status === "completed").map(
+					(battle) => battle.id,
+				);
+				if (completedBattleIds.size() === 0) continue;
+
+				this.CaseBattles = this.CaseBattles.filter((battle) => battle.status !== "completed");
+				Events.CaseBattlesUpdated.broadcast({
+					updated: [],
+					removed: completedBattleIds,
+				});
+			}
+		});
+	}
+
+	private async cleanupCompletedCaseBattlesGlobally(): Promise<void> {
+		if (!this.supportsGlobalCompletedCleanup) return;
+
+		try {
+			const response = await new Request("POST", "/casebattles/cleanup-completed").GetResponse();
+			if (response.Code === 404 || response.Code === 405) {
+				this.supportsGlobalCompletedCleanup = false;
+			}
+		} catch (error) {
+			log("warn", `[CaseBattleService] Failed global completed cleanup: ${error}`);
+		}
 	}
 
 	private handleCaseBattleCompleted(battle: CaseBattleData) {

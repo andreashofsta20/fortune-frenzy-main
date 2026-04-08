@@ -21,6 +21,52 @@ interface Props extends React.PropsWithChildren {
 	flashMenu: () => void;
 }
 
+const MAX_TRADE_UNIQUE_ITEMS = 8;
+const MAX_TRADE_ITEM_QUANTITY = 999;
+
+function normalizeTradeSelection(
+	selection: Record<string, number>,
+	previousSelection: Record<string, number>,
+	availableInventory: Map<string, string[]> | undefined,
+): Record<string, number> {
+	const orderedItemIds = new Array<string>();
+	const seenItemIds = {} as Record<string, true>;
+
+	const pushItemId = (rawItemId: unknown) => {
+		const itemId = tostring(rawItemId ?? "");
+		if (itemId.size() === 0 || seenItemIds[itemId]) return;
+		seenItemIds[itemId] = true;
+		orderedItemIds.push(itemId);
+	};
+
+	for (const [itemId] of pairs(previousSelection)) {
+		pushItemId(itemId);
+	}
+
+	for (const [itemId] of pairs(selection)) {
+		pushItemId(itemId);
+	}
+
+	const normalizedSelection = {} as Record<string, number>;
+	let uniqueItemCount = 0;
+
+	for (const itemId of orderedItemIds) {
+		if (uniqueItemCount >= MAX_TRADE_UNIQUE_ITEMS) break;
+
+		const requestedQuantity = math.max(0, math.floor(tonumber(selection[itemId]) ?? 0));
+		if (requestedQuantity <= 0) continue;
+
+		const availableQuantity = availableInventory?.get(itemId)?.size() ?? 0;
+		const clampedQuantity = math.min(requestedQuantity, availableQuantity, MAX_TRADE_ITEM_QUANTITY);
+		if (clampedQuantity <= 0) continue;
+
+		normalizedSelection[itemId] = clampedQuantity;
+		uniqueItemCount += 1;
+	}
+
+	return normalizedSelection;
+}
+
 const ItemTile = React.memo(
 	({
 		item,
@@ -161,7 +207,6 @@ const ItemGrid = React.memo(
 		setSelectingFor: (value: "none" | "local" | "other") => void;
 	}) => {
 		const px = usePx();
-		const renderedCountByItemId = new Map<string, number>();
 
 		return (
 			<frame
@@ -181,14 +226,13 @@ const ItemGrid = React.memo(
 				{items.map((item, index) => {
 					const itemId = item !== "empty" ? item.id : undefined;
 					const selectedCount = itemId ? selection[itemId] || 0 : 0;
-					const renderedCount = itemId ? renderedCountByItemId.get(itemId) || 0 : 0;
-					const quantityLabel =
-						itemId && renderedCount === 0 && selectedCount > 1 ? ` (x${selectedCount})` : "";
-					if (itemId) renderedCountByItemId.set(itemId, renderedCount + 1);
+					const quantityLabel = itemId && selectedCount > 1 ? ` (x${selectedCount})` : "";
 					const onRemove = itemId
 						? () => updateSelection(itemId, math.max(selectedCount - 1, 0))
 						: () => setSelectingFor(side);
-					const onAdd = itemId ? () => updateSelection(itemId, selectedCount + 1) : onRemove;
+					const onAdd = itemId
+						? () => updateSelection(itemId, math.min(selectedCount + 1, MAX_TRADE_ITEM_QUANTITY))
+						: onRemove;
 
 					return (
 						<ItemTile
@@ -224,15 +268,26 @@ export const CreateTrade = React.memo(({ visible, flashMenu, children }: Props) 
 		});
 	}, []);
 
-	const updateSelection = useCallback((side: "local" | "other", id: string, quantity: number) => {
-		newTradeStateAtom((prev) => ({
-			...prev,
-			[side === "local" ? "localSelection" : "otherSelection"]: {
-				...prev[side === "local" ? "localSelection" : "otherSelection"],
-				[id]: quantity,
-			},
-		}));
-	}, []);
+	const updateSelection = useCallback(
+		(side: "local" | "other", id: string, quantity: number) => {
+			newTradeStateAtom((prev) => {
+				const selectionKey = side === "local" ? "localSelection" : "otherSelection";
+				const previousSelection = prev[selectionKey];
+				const availableInventory =
+					side === "local" ? clientStateController.Inventory : prev.selectedPlayerInventory;
+
+				return {
+					...prev,
+					[selectionKey]: normalizeTradeSelection(
+						{ ...previousSelection, [id]: quantity },
+						previousSelection,
+						availableInventory,
+					),
+				};
+			});
+		},
+		[clientStateController],
+	);
 
 	const setSelectingFor = useCallback((value: "none" | "local" | "other") => {
 		newTradeStateAtom((prev) => ({ ...prev, currentlySelectingFor: value }));
@@ -245,31 +300,68 @@ export const CreateTrade = React.memo(({ visible, flashMenu, children }: Props) 
 			for (const [id, quantity] of pairs(selection)) {
 				const item = clientStateController.ItemInfo.get(id as string);
 				if (!item) continue;
-				value += item.value * quantity;
-				for (let i = 0; i < quantity; i++) items.push(item);
+				const normalizedQuantity = math.max(0, math.floor(tonumber(quantity) ?? 0));
+				if (normalizedQuantity <= 0) continue;
+				value += item.value * normalizedQuantity;
+				if (items.size() < MAX_TRADE_UNIQUE_ITEMS) {
+					items.push(item);
+				}
 			}
-			const emptySlots = 8 - items.size();
+			const emptySlots = math.max(0, MAX_TRADE_UNIQUE_ITEMS - items.size());
 			for (let i = 0; i < emptySlots; i++) items.push("empty");
 			return $tuple(value, items);
 		}
 
-		const [localValue, localItems] = buildItems(newTradeState.localSelection);
-		const [otherValue, otherItems] = buildItems(newTradeState.otherSelection);
+		const normalizedLocalSelection = normalizeTradeSelection(
+			newTradeState.localSelection,
+			newTradeState.localSelection,
+			clientStateController.Inventory,
+		);
+		const normalizedOtherSelection = normalizeTradeSelection(
+			newTradeState.otherSelection,
+			newTradeState.otherSelection,
+			newTradeState.selectedPlayerInventory,
+		);
+
+		const [localValue, localItems] = buildItems(normalizedLocalSelection);
+		const [otherValue, otherItems] = buildItems(normalizedOtherSelection);
 
 		return { other: { value: otherValue, items: otherItems }, local: { value: localValue, items: localItems } };
-	}, [newTradeState.localSelection, newTradeState.otherSelection, clientStateController]);
+	}, [
+		newTradeState.localSelection,
+		newTradeState.otherSelection,
+		newTradeState.selectedPlayerInventory,
+		clientStateController,
+	]);
 
 	const handleConfirm = useCallback(
 		async (_, __, c: number) => {
 			if (c > 1) return;
 			isLoadingAtom(true);
 
+			const normalizedLocalSelection = normalizeTradeSelection(
+				newTradeState.localSelection,
+				newTradeState.localSelection,
+				clientStateController.Inventory,
+			);
+			const normalizedOtherSelection = normalizeTradeSelection(
+				newTradeState.otherSelection,
+				newTradeState.otherSelection,
+				newTradeState.selectedPlayerInventory,
+			);
+
+			newTradeStateAtom((prev) => ({
+				...prev,
+				localSelection: normalizedLocalSelection,
+				otherSelection: normalizedOtherSelection,
+			}));
+
 			const result = await requestServer(
 				Functions.Trading.CreateTrade,
 				"Failed to create trade",
 				tonumber(newTradeState.otherPlayerInfo.userId) || 0,
-				newTradeState.localSelection,
-				newTradeState.otherSelection,
+				normalizedLocalSelection,
+				normalizedOtherSelection,
 			);
 
 			isLoadingAtom(false);
@@ -284,9 +376,11 @@ export const CreateTrade = React.memo(({ visible, flashMenu, children }: Props) 
 			}
 		},
 		[
+			clientStateController,
 			newTradeState.otherPlayerInfo.userId,
 			newTradeState.localSelection,
 			newTradeState.otherSelection,
+			newTradeState.selectedPlayerInventory,
 			handleCloseButton,
 		],
 	);

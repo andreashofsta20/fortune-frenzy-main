@@ -32,6 +32,10 @@ const MINIGAMES = [
 	{
 		name: "Coinflip",
 		image: "",
+		menuImage: "rbxassetid://122507891160868",
+		menuImageRotation: -17,
+		menuImageSize: new UDim2(1, 0, 1, 0),
+		menuImagePosition: new UDim2(0.05, 0, 0.5, 0),
 		description: "You've completed {{count}} flips",
 		countZeroDescription: "You've never played coinflip",
 		internalKey: "Coinflip",
@@ -40,6 +44,10 @@ const MINIGAMES = [
 	{
 		name: "Item Cases",
 		image: "",
+		menuImage: "rbxassetid://138622510320842",
+		menuImageRotation: 0,
+		menuImageSize: new UDim2(1, 0, 1, 0),
+		menuImagePosition: new UDim2(0.05, 0, 0.5, 0),
 		description: "You've opened {{count}} cases",
 		countZeroDescription: "You've never opened a case",
 		internalKey: "ItemCases",
@@ -49,6 +57,10 @@ const MINIGAMES = [
 	{
 		name: "Case Battles",
 		image: "",
+		menuImage: "rbxassetid://137498998440327",
+		menuImageRotation: 0,
+		menuImageSize: new UDim2(1.3, 0, 1.3, 0),
+		menuImagePosition: new UDim2(0.04, 0, 0.5, 0),
 		description: "You've joined {{count}} case battles",
 		countZeroDescription: "You've never joined a case battle",
 		internalKey: "CaseBattles",
@@ -58,6 +70,10 @@ const MINIGAMES = [
 	{
 		name: "Jackpot",
 		image: "",
+		menuImage: "rbxassetid://91734184790134",
+		menuImageRotation: -17,
+		menuImageSize: new UDim2(1, 0, 1, 0),
+		menuImagePosition: new UDim2(0.05, 0, 0.5, 0),
 		description: "You've joined {{count}} jackpots",
 		countZeroDescription: "You've never joined a jackpot",
 		internalKey: "Jackpot",
@@ -176,6 +192,7 @@ function MinigamesMenuComponent({ visible, flashMenu }: Props) {
 				ref={setButtonInstance}
 				Image={minigame.image}
 				Size={new UDim2(1, 0, 0, px(110))}
+				ClipsDescendants={true}
 				BackgroundTransparency={0}
 				BackgroundColor3={palette.background2}
 				Event={{
@@ -189,6 +206,90 @@ function MinigamesMenuComponent({ visible, flashMenu }: Props) {
 				}}
 				key={`minigamesMenuImageButton-${minigame.internalKey}`}
 			>
+				{minigame.internalKey === "CaseBattles" ? (
+					<>
+						<canvasgroup
+							Size={new UDim2(0, px(132), 1, 0)}
+							Position={new UDim2(0, 0, 0, 0)}
+							BackgroundTransparency={1}
+							ClipsDescendants={true}
+							ZIndex={-1}
+						>
+							<imagelabel
+								Image="rbxassetid://132649198062625"
+								BackgroundTransparency={1}
+								ImageTransparency={0}
+								ImageColor3={Color3.fromRGB(255, 255, 255)}
+								Size={new UDim2(1, 0, 1, 0)}
+								Position={new UDim2(0.05, 0, 0.5, 0)}
+								AnchorPoint={new Vector2(0, 0.5)}
+								ZIndex={0}
+							>
+								<uiaspectratioconstraint AspectRatio={1} />
+							</imagelabel>
+						</canvasgroup>
+						<canvasgroup
+							Size={new UDim2(0, px(132), 1, 0)}
+							Position={new UDim2(0.1, 0, 0, 0)}
+							BackgroundTransparency={1}
+							ClipsDescendants={true}
+							ZIndex={-2}
+						>
+							<imagelabel
+								Image="rbxassetid://107726293836738"
+								BackgroundTransparency={1}
+								ImageTransparency={0.35}
+								ImageColor3={Color3.fromRGB(255, 255, 255)}
+								Size={new UDim2(1, 0, 1, 0)}
+								Position={new UDim2(0.05, 0, 0.5, 0)}
+								AnchorPoint={new Vector2(0, 0.5)}
+								ZIndex={0}
+							>
+								<uiaspectratioconstraint AspectRatio={1} />
+							</imagelabel>
+						</canvasgroup>
+						<canvasgroup
+							Size={new UDim2(0, px(132), 1, 0)}
+							Position={new UDim2(0.2, 0, 0, 0)}
+							BackgroundTransparency={1}
+							ClipsDescendants={true}
+							ZIndex={-3}
+						>
+							<imagelabel
+								Image="rbxassetid://135561038387876"
+								BackgroundTransparency={1}
+								ImageTransparency={0.55}
+								ImageColor3={Color3.fromRGB(255, 255, 255)}
+								Size={new UDim2(1, 0, 1, 0)}
+								Position={new UDim2(0.05, 0, 0.5, 0)}
+								AnchorPoint={new Vector2(0, 0.5)}
+								ZIndex={0}
+							>
+								<uiaspectratioconstraint AspectRatio={1} />
+							</imagelabel>
+						</canvasgroup>
+					</>
+				) : (
+					<canvasgroup
+						Size={new UDim2(0, px(132), 1, 0)}
+						BackgroundTransparency={1}
+						ClipsDescendants={true}
+						ZIndex={0}
+					>
+						<imagelabel
+							Image={minigame.menuImage}
+							BackgroundTransparency={1}
+							ImageTransparency={0}
+							Rotation={minigame.menuImageRotation}
+							Size={minigame.menuImageSize}
+							Position={minigame.menuImagePosition}
+							AnchorPoint={new Vector2(0, 0.5)}
+							ZIndex={0}
+						>
+							<uiaspectratioconstraint AspectRatio={1} />
+						</imagelabel>
+					</canvasgroup>
+				)}
 				<Corner roundness="small" />
 				<SectionStroke />
 				<TextLabel
@@ -280,6 +381,7 @@ function MinigamesMenuComponent({ visible, flashMenu }: Props) {
 					AutomaticCanvasSize={Enum.AutomaticSize.Y}
 					ScrollBarImageTransparency={1}
 					ScrollBarThickness={0}
+					ClipsDescendants={true}
 					BackgroundTransparency={1}
 					key="minigamesMenuScrollingFrame"
 				>
