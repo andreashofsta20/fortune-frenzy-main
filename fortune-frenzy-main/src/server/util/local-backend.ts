@@ -5057,7 +5057,7 @@ class LocalBackend {
 			result: {
 				game_open: true,
 				paycheck: 25000,
-				polling_cooldown: 0.6,
+				polling_cooldown: 2,
 				dailywheel: {
 					rewards: [
 						{ id: "cash_small", type: "cash", value: "5000", chance: 22 },

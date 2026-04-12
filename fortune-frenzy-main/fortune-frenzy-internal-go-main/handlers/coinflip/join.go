@@ -1,11 +1,13 @@
 package coinflip
 
 import (
+	"context"
 	"encoding/json"
 	"ffinternal-go/models"
 	"ffinternal-go/service"
 	"ffinternal-go/utilities"
-	"strconv"
+	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -13,8 +15,20 @@ import (
 )
 
 type JoinRequestBody struct {
-	UserID int64    `json:"user_id" validate:"required"`
-	Items  []string `json:"items" validate:"required,dive,required"`
+	UserID interface{} `json:"user_id" validate:"required"`
+	Items  []string    `json:"items" validate:"required,dive,required"`
+}
+
+func parseJoinUserID(raw interface{}) string {
+	switch v := raw.(type) {
+	case float64:
+		return fmt.Sprintf("%.0f", v)
+	case string:
+		if v != "" && v != "0" {
+			return v
+		}
+	}
+	return ""
 }
 
 func JoinCoinflip(c *fiber.Ctx) error {
@@ -28,7 +42,8 @@ func JoinCoinflip(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request"})
 	}
 
-	if body.UserID == 0 || len(body.Items) == 0 {
+	userIDStr := parseJoinUserID(body.UserID)
+	if userIDStr == "" || len(body.Items) == 0 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request"})
 	}
 	for _, item := range body.Items {
@@ -44,13 +59,21 @@ func JoinCoinflip(c *fiber.Ctx) error {
 	}
 	defer db.Close()
 
-	userIDStr := strconv.FormatInt(body.UserID, 10)
-	
-	_, err = redis.SetNX(c.Context(), "coinflip:"+coinflipID+":user:"+userIDStr, "active", 5*time.Second).Result()
+	lockKey := "coinflip:" + coinflipID + ":user:" + userIDStr
+	lockAcquired, err := redis.SetNX(c.Context(), lockKey, "active", 5*time.Second).Result()
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to join coinflip"})
 	}
-	
+	if !lockAcquired {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Coinflip join already in progress"})
+	}
+	keepUserLock := false
+	defer func() {
+		if !keepUserLock {
+			redis.Del(c.Context(), lockKey)
+		}
+	}()
+
 	keys, err := redis.Keys(c.Context(), "coinflip:*:user:"+userIDStr).Result()
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to check active coinflips"})
@@ -73,14 +96,14 @@ func JoinCoinflip(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Coinflip cannot be joined"})
 	}
 
-	if coinflip.Player1.ID == &userIDStr {
+	if coinflip.Player1.ID != nil && *coinflip.Player1.ID == userIDStr {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Cannot join your own coinflip"})
 	}
 
 	rows, err := db.QueryContext(c.Context(),
 		"SELECT user_asset_id FROM item_copies WHERE user_asset_id IN (?"+
 			strings.Repeat(",?", len(body.Items)-1)+") AND owner_id = ?",
-		append(utilities.ToInterfaceSlice(body.Items), body.UserID)...,
+		append(utilities.ToInterfaceSlice(body.Items), userIDStr)...,
 	)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to verify items"})
@@ -119,22 +142,35 @@ func JoinCoinflip(c *fiber.Ctx) error {
 
 	pipe := redis.TxPipeline()
 	pipe.Set(c.Context(), "coinflip:"+coinflipID, string(data), coinflipTTL)
-	pipe.Set(c.Context(), "coinflip:"+coinflipID+":user:"+userIDStr, "active", coinflipTTL)
+	pipe.Set(c.Context(), lockKey, "active", coinflipTTL)
 	if _, err = pipe.Exec(c.Context()); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to join coinflip"})
 	}
+	keepUserLock = true
 
+	forwardHeaders := utilities.CopyRequestHeaders(c)
 	go func() {
 		time.Sleep(1500 * time.Millisecond)
-		
-		resp, err := utilities.InternalRequest(c, "POST", "/coinflip/start/"+coinflipID, fiber.Map{
+
+		resp, err := utilities.InternalRequestForwarded("POST", "/coinflip/start/"+coinflipID, fiber.Map{
 			"coinflip_id": coinflipID,
-		})
-		
-		if err != nil || resp.StatusCode() != fiber.StatusOK {
+		}, forwardHeaders)
+
+		if err != nil || resp == nil || resp.StatusCode() != fiber.StatusOK {
+			statusCode := 0
+			if resp != nil {
+				statusCode = resp.StatusCode()
+			}
+			errMsg := "nil"
+			if err != nil {
+				errMsg = err.Error()
+			}
+			log.Printf("[Coinflip] Internal start request failed for %s: err=%s statusCode=%d", coinflipID, errMsg, statusCode)
+			utilities.DiscordLogInternalError("CoinflipStart", coinflipID, fmt.Sprintf("Internal /coinflip/start failed: err=%s statusCode=%d", errMsg, statusCode))
+
 			coinflip.Status = "failed"
 			data, _ := json.Marshal(coinflip)
-			redis.Set(c.Context(), "coinflip:"+coinflipID, string(data), 10*time.Second)
+			_ = redis.Set(context.Background(), "coinflip:"+coinflipID, string(data), 10*time.Second).Err()
 		}
 	}()
 

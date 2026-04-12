@@ -6,6 +6,7 @@
 	"scripts": {
 		"build": "rbxtsc",
 		"watch": "rbxtsc -w",
+		"kill-rojo": "lsof -tiTCP:34872 -sTCP:LISTEN | xargs kill 2>/dev/null || true",
 		"dev": "concurrently \"npx rbxtsc -w\" \"rojo serve\""
 	},
 	"keywords": [],

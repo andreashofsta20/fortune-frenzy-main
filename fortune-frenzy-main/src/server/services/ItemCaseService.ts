@@ -8,7 +8,34 @@ import { Events } from "server/network";
 import { GameAnalyticsServer } from "@rbxts/gameanalytics-sdk";
 import log from "shared/util/log";
 import { CommerceService } from "./CommerceService";
-import { MarketplaceService } from "@rbxts/services";
+import { HttpService, MarketplaceService } from "@rbxts/services";
+
+declare const fetch: (url: string, init: defined) => Promise<unknown>;
+
+function emitAgentDebugLog(location: string, message: string, data: Record<string, unknown>, hypothesisId: string) {
+	// #region agent log
+	task.spawn(() => {
+		pcall(() =>
+			fetch("http://127.0.0.1:7528/ingest/1b6715ac-5dbe-4e21-b0fb-3326720d79ad", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					"X-Debug-Session-Id": "4ef876",
+				},
+				body: HttpService.JSONEncode({
+					sessionId: "4ef876",
+					location,
+					message,
+					data,
+					timestamp: DateTime.now().UnixTimestampMillis,
+					runId: "pre-fix",
+					hypothesisId,
+				}),
+			}),
+		);
+	});
+	// #endregion
+}
 
 @Service()
 export class ItemCaseService implements OnStart {
@@ -73,12 +100,36 @@ export class ItemCaseService implements OnStart {
 	}
 
 	async refreshCases() {
-		const cases_response = await new Request("GET", "/cases").GetResponse();
-		const response = cases_response.Response as CasesResponse;
+		const cases_response = await new Request("GET", "/cases").GetResponse<CasesResponse>();
+		// #region agent log
+		emitAgentDebugLog(
+			"src/server/services/ItemCaseService.ts:102",
+			"cases refresh response",
+			{
+				code: cases_response.Code,
+				success: cases_response.Success,
+				hasDataArray: typeIs(cases_response.Response?.data, "table"),
+			},
+			"H4",
+		);
+		// #endregion
 
-		// Reset the current cases map to avoid stale data then repopulate it
+		if (!cases_response.Success || !cases_response.Response?.data) {
+			log(
+				"warn",
+				`[ItemCaseService] Failed to refresh cases (Success=${cases_response.Success}, Code=${cases_response.Code})`,
+			);
+			task.delay(5, () => {
+				this.refreshCases().catch((e) => warn("[ItemCaseService] refreshCases retry failed:", e));
+			});
+			return;
+		}
+
 		this.Cases.clear();
-		response.data.forEach((item) => this.Cases.set(item.id, item));
+		const response = cases_response.Response;
+		for (const item of response.data) {
+			this.Cases.set(item.id, item);
+		}
 
 		// Tell all connected clients about the new cases
 		Events.CaseUpdate.broadcast(response.data);
@@ -88,7 +139,14 @@ export class ItemCaseService implements OnStart {
 			response.data.map((item) => tonumber(item.dev_product) ?? 0),
 			(player, productId, purchased, profile) => {
 				if (purchased) {
-					const caseId = response.data.find((item) => tonumber(item.dev_product) === productId)?.id;
+					let caseId = response.data.find((item) => tonumber(item.dev_product) === productId)?.id;
+					if (!caseId) {
+						const pending = this.pendingDevProducts.get(player);
+						const pendingCase = pending ? this.Cases.get(pending[0]) : undefined;
+						if (pending && tonumber(pendingCase?.dev_product) === productId) {
+							caseId = pending[0];
+						}
+					}
 					if (!caseId) return;
 					this.pendingDevProducts.set(player, [caseId, true]);
 				} else {
@@ -137,8 +195,11 @@ export class ItemCaseService implements OnStart {
 
 			let polling = true;
 			let confirmed = false;
-			while (polling) {
+			const maxWaitSec = 180;
+			let waited = 0;
+			while (polling && waited < maxWaitSec) {
 				task.wait(1);
+				waited++;
 				const pending = this.pendingDevProducts.get(player);
 				if (!pending) {
 					polling = false;
@@ -151,6 +212,11 @@ export class ItemCaseService implements OnStart {
 					confirmed = true;
 					continue;
 				}
+			}
+
+			if (waited >= maxWaitSec) {
+				this.pendingDevProducts.delete(player);
+				return { status: "error", message: "Purchase confirmation timed out" };
 			}
 
 			if (!confirmed) return { status: "error", message: "You did not confirm the purchase" };
@@ -225,7 +291,21 @@ export class ItemCaseService implements OnStart {
 			}).GetResponse();
 
 			const response = request.Response as OpenCaseResponse;
+			// #region agent log
+			emitAgentDebugLog(
+				"src/server/services/ItemCaseService.ts:286",
+				"open case response",
+				{
+					code: request.Code,
+					success: request.Success,
+					hasResult: response?.result !== undefined,
+				},
+				"H4",
+			);
+			// #endregion
+
 			if (!request.Success || !response || !response.result) {
+				log("warn", `[ItemCaseService] openCase failed: player=${player.UserId}, case_id=${case_id}, code=${request.Code}, error=${response?.error}`);
 				this.PlayerManagementService.rollbackAddCash(cashTransactionId);
 				if (diamondsTransactionId) this.PlayerManagementService.rollbackAddDiamonds(diamondsTransactionId);
 				this.openCaseStatuses.delete(player);
@@ -235,6 +315,7 @@ export class ItemCaseService implements OnStart {
 			this.caseOpenCount.set(countKey, currentCount + 1);
 			this.PlayerManagementService.refreshInventory(player, 5);
 			this.Cases.set(response.case.id, response.case);
+			log("info", `[ItemCaseService] openCase success: player=${player.UserId}, case_id=${case_id}, wonItem=${response.result.id}`);
 			Events.CaseUpdate.broadcast([response.case]);
 			const ico = await this.CommerceService.hasGamepass(player, "INSTANT_CASE_OPENING");
 			let speed = ico ? 1 : 5;

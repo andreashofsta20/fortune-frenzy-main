@@ -9,186 +9,138 @@ import getServerType from "shared/util/get-server-type";
 import log from "shared/util/log";
 import { ServerReceiver } from "@flamework/networking/out/functions/types";
 import getPollingCooldown from "server/util/get-polling-cooldown";
+import { getPlayersOnMenu } from "server/util/player-menu-tracker";
+
+/** Packeter / HTTP backend base URL (change per environment). */
+const PACKETER_BACKEND_URL = "https://api.fortunefrenzy.xyz";
+const SETTINGS_REFRESH_INTERVAL = 30;
+const LEADERBOARD_REFRESH_INTERVAL = 15;
+const NETWORK_LOG_FLUSH_INTERVAL = 5;
+
+interface SettingsGetResponse {
+	status: string;
+	result: Record<string, unknown> & {
+		polling_cooldown?: number;
+		game_open?: boolean;
+		paycheck?: number;
+		dailywheel?: unknown;
+	};
+}
+
+interface LeaderboardHttpResponse {
+	status: string;
+	leaderboards: {
+		cash: readonly unknown[];
+		value: readonly unknown[];
+	};
+}
+
+interface ApiModule {
+	default: {
+		function: ServerReceiver<unknown[], unknown>;
+		handle: (...args: unknown[]) => Promise<unknown>;
+	};
+}
 
 @Service({ loadOrder: -1 })
 export class InitializationService implements OnInit, OnStart {
 	constructor(private PlayerManagementService: PlayerManagementService) {}
 
+	private readonly networkLogs: {
+		network_name: string;
+		speed: number;
+		response: string;
+		player: { name: string; id: number };
+	}[] = [];
+
 	async onInit() {
 		log("warn", "🚀 [InitializationService] Initializing...");
 		const start_time = tick();
-		new Packeter("local");
+
+		new Packeter(PACKETER_BACKEND_URL);
 		ReplicatedStorage.SetAttribute("ServerType", getServerType());
+
 		log("print", `✅ [InitializationService] Initialized in ${setDecimalPlaces(tick() - start_time)}ms`);
+
+		// Must run in OnInit (sequential): OnStart handlers run concurrently — registering here avoids nil Flamework callbacks.
+		this.registerApiCallbacks();
 	}
 
 	async onStart() {
 		const startTime = tick();
 		log("warn", "⌛ [InitializationService] Setting up network functions...");
-		const networkTraceEnabled = ServerScriptService.GetAttribute("debug_network_trace") === true;
-		const networkLogs: {
-			network_name: string;
-			speed: number;
-			response: string;
-			player: { name: string; id: number };
-		}[] = [];
 
-		function createNetworkCallback(
-			module: {
-				default: {
-					function: ServerReceiver<unknown[], unknown>;
-					handle: (...args: unknown[]) => unknown;
-				};
-			},
-			networkName: string,
-		) {
-			return async (...args: unknown[]) => {
-				const player = args[0] as Player;
-				const callStartTime = tick();
-				const result = await module.default.handle(...args);
-				const duration = setDecimalPlaces(tick() - callStartTime, 2);
-
-				if (networkTraceEnabled) {
-					let truncatedResult = HttpService.JSONEncode(result);
-					if (truncatedResult.size() > 100) {
-						truncatedResult = `${truncatedResult.sub(1, 100)}...`;
-					}
-
-					networkLogs.push({
-						network_name: networkName,
-						speed: duration,
-						response: truncatedResult,
-						player: { name: player.Name, id: player.UserId },
-					});
-
-					// Keep log payload bounded even during stress tests.
-					while (networkLogs.size() > 250) {
-						networkLogs.remove(1);
-					}
-
-					if (duration >= 0.5) {
-						warn(`🔗 [NetworkLogging] Slow call ${networkName} took ${duration}ms`);
-					}
-				}
-				return result;
-			};
+		try {
+			await this.fetchAndApplyGameSettings();
+		} catch (error) {
+			log("warn", `[InitializationService] Initial settings fetch failed: ${error}`);
 		}
 
-		await this.fetchAndApplyGameSettings();
-
-		const apiParent = script.Parent?.Parent?.FindFirstChild("api") as Instance | undefined;
-		if (apiParent) {
-			const descendants = apiParent.GetDescendants();
-			descendants.forEach((descendant) => {
-				if (descendant.IsA("ModuleScript")) {
-					const module = require(descendant) as {
-						default: {
-							function: ServerReceiver<unknown[], unknown>;
-							handle: (...args: unknown[]) => unknown;
-						};
-					};
-
-					log("warn", `🔗 [InitializationService] Setting up network function: ${descendant.Name}`);
-					module.default.function.setCallback(createNetworkCallback(module, descendant.Name));
-				}
-			});
-		}
-
-		function startLoop(delay: number | "global", callback: () => Promise<void>) {
+		const startLoop = (delay: number | "global", callback: () => Promise<void>) => {
 			task.spawn(async () => {
 				while (true) {
-					await callback();
+					try {
+						await callback();
+					} catch (err) {
+						warn("❌ Loop error:", err);
+					}
 					task.wait(delay === "global" ? getPollingCooldown() : delay);
 				}
 			});
-		}
+		};
 
-		startLoop(1.25, async () => {
-			const playersLoaded = Players.GetPlayers().filter(
-				(player) => player.GetAttribute("__SERVER_LOADED") === true,
-			);
-			const allUserIds = playersLoaded.map((player) => player.UserId).join(",");
+		startLoop("global", async () => {
+			const playersLoaded = Players.GetPlayers().filter((p) => p.GetAttribute("__SERVER_LOADED") === true);
+			const allUserIds = playersLoaded.map((p) => p.UserId).join(",");
 			if (allUserIds === "") return;
 
 			const request = await new Request("GET", "/users/get-cash-changes", {
 				"user-ids": allUserIds,
 			}).GetResponse();
 			if (!request.Success) return;
-			const response = request.Response as CashChangeResponse;
 
-			response.changes.forEach(async (change) => {
+			const response = request.Response as CashChangeResponse;
+			if (!response.changes) return;
+
+			for (const change of response.changes) {
 				const player = Players.GetPlayerByUserId(tonumber(change.user_id) as number);
-				if (!player) return;
+				if (!player) continue;
 				const profile = await this.PlayerManagementService.getOnlineProfile(player);
-				if (!profile) return;
+				if (!profile) continue;
 				this.PlayerManagementService.addCash(player, tonumber(change.amount) ?? 0);
-			});
+			}
 		});
 
-		startLoop(5, async () => {
-			if (!networkTraceEnabled) return;
-			if (networkLogs.size() === 0) return;
+		startLoop(NETWORK_LOG_FLUSH_INTERVAL, async () => {
+			if (this.networkLogs.size() === 0) return;
 
 			const body = {
 				server_id: (ServerScriptService.GetAttribute("server_id") as string) || "SERVER_ID_NOT_FOUND",
-				logs: networkLogs,
+				logs: this.networkLogs,
 			};
 
 			const request = await new Request("POST", "/logging/network", undefined, body).GetResponse();
 			if (request.Success) {
-				// print(`🌍 [NetworkLogging] Successfully pushed ${networkLogs.size()} logs`);
-				networkLogs.clear();
+				this.networkLogs.clear();
 			}
 		});
 
-		startLoop(8, async () => {
-			const request = await new Request("GET", "/leaderboard").GetResponse();
-			if (request.Success) {
-				const response = request.Response as {
-					status: string;
-					leaderboards: {
-						cash: [
-							user_id: string,
-							username: string,
-							display_name: string,
-							amount: string,
-							country: string,
-						][];
-						value: [
-							user_id: string,
-							username: string,
-							display_name: string,
-							amount: string,
-							country: string,
-						][];
-					};
-				};
+		startLoop(LEADERBOARD_REFRESH_INTERVAL, async () => {
+			if (getPlayersOnMenu("Leaderboards").size() === 0) return;
+			const request = await new Request("GET", "/leaderboard").GetResponse<LeaderboardHttpResponse>();
+			if (!request.Success || !request.Response?.leaderboards) return;
 
-				const filterLeaderboardEntries = (
-					entries: [
-						user_id: string,
-						username: string,
-						display_name: string,
-						amount: string,
-						country: string,
-					][],
-				) =>
-					entries.filter((entry) => {
-						const userId = tonumber(entry[0]) ?? 0;
-						if (userId <= 0) return false;
-						return this.PlayerManagementService.hasPlayedBefore(userId);
-					});
-
-				const filteredLeaderboards = {
-					cash: filterLeaderboardEntries(response.leaderboards.cash),
-					value: filterLeaderboardEntries(response.leaderboards.value),
-				};
-
-				ReplicatedStorage.SetAttribute("Leaderboards", HttpService.JSONEncode(filteredLeaderboards));
+			try {
+				ReplicatedStorage.SetAttribute(
+					"Leaderboards",
+					HttpService.JSONEncode(request.Response.leaderboards),
+				);
+			} catch (e) {
+				warn("❌ Leaderboard encode failed:", e);
 			}
 		});
 
-		startLoop(15, async () => {
+		startLoop(SETTINGS_REFRESH_INTERVAL, async () => {
 			try {
 				await this.fetchAndApplyGameSettings();
 			} catch (error) {
@@ -197,39 +149,99 @@ export class InitializationService implements OnInit, OnStart {
 		});
 
 		const serverReady = new Instance("BoolValue");
-		serverReady.Value = true;
 		serverReady.Name = "ServerReady";
+		serverReady.Value = true;
 		serverReady.Parent = ReplicatedStorage;
 
 		log("print", `✅ [InitializationService] Started in ${setDecimalPlaces(tick() - startTime)}ms`);
 	}
 
-	private async fetchAndApplyGameSettings(): Promise<void> {
-		const request = await new Request("GET", "/settings").GetResponse();
-		if (!request.Success) throw `HTTP ${request.Code}`;
+	private createNetworkCallback(module: ApiModule, networkName: string) {
+		return async (...args: unknown[]) => {
+			const player = args[0] as Player;
+			const callStartTime = tick();
 
-		const response = request.Response as {
-			status: string;
-			result: {
-				game_open: boolean;
-				paycheck: number;
-				polling_cooldown: number;
-				dailywheel: {
-					rewards: {
-						type: "item" | "cash" | "gems" | "mystery";
-						value: string;
-						chance: number;
-					}[];
-				};
-			};
+			try {
+				const result = await module.default.handle(...args);
+				const duration = setDecimalPlaces(tick() - callStartTime, 2);
+
+				let truncatedResult = HttpService.JSONEncode(result);
+				if (truncatedResult.size() > 100) {
+					truncatedResult = `${truncatedResult.sub(1, 100)}...`;
+				}
+
+				this.networkLogs.push({
+					network_name: networkName,
+					speed: duration,
+					response: truncatedResult,
+					player: { name: player.Name, id: player.UserId },
+				});
+
+				while (this.networkLogs.size() > 250) {
+					this.networkLogs.remove(1);
+				}
+
+				return result;
+			} catch (err) {
+				warn(`❌ Network error in ${networkName}:`, err);
+				return { status: "error", message: "Internal server error" };
+			}
 		};
+	}
 
-		if (request.Code !== 200) throw `HTTP ${request.Code}`;
-		const settings = response.result;
-		for (const [key, value] of pairs(settings as Record<string, unknown>)) {
-			ReplicatedStorage.SetAttribute(`_config_${key}`, HttpService.JSONEncode({ value }));
+	private findApiRoot(): Instance | undefined {
+		const ts = ServerScriptService.FindFirstChild("TS");
+		const fromTs = ts?.FindFirstChild("api");
+		if (fromTs) return fromTs;
+		return script.Parent?.Parent?.FindFirstChild("api") as Instance | undefined;
+	}
+
+	private registerApiCallbacks(): void {
+		const apiParent = this.findApiRoot();
+		if (apiParent) {
+			for (const descendant of apiParent.GetDescendants()) {
+				if (descendant.IsA("ModuleScript")) {
+					try {
+						const mod = require(descendant) as ApiModule;
+						log("warn", `🔗 [InitializationService] Setting up network function: ${descendant.Name}`);
+						mod.default.function.setCallback(this.createNetworkCallback(mod, descendant.Name));
+					} catch (err) {
+						warn(`❌ Failed to load module ${descendant.Name}:`, err);
+					}
+				}
+			}
+			ReplicatedStorage.SetAttribute("__FF_NETWORK_READY", true);
+		} else {
+			warn("❌ InitializationService: could not find server `api` folder — no remotes registered");
+		}
+	}
+
+	private async fetchAndApplyGameSettings(): Promise<void> {
+		const request = await new Request("GET", "/settings").GetResponse<SettingsGetResponse>();
+
+		if (!request.Success) {
+			warn("❌ Settings fetch failed:", request.Code);
+			return;
 		}
 
-		ServerScriptService.SetAttribute("gamesettings_polling_cooldown", settings.polling_cooldown);
+		const response = request.Response;
+		if (!response?.result) {
+			warn("❌ Settings response missing result");
+			return;
+		}
+
+		const settings = response.result;
+		for (const [key, value] of pairs(settings as Record<string, unknown>)) {
+			try {
+				ReplicatedStorage.SetAttribute(`_config_${key}`, HttpService.JSONEncode({ value }));
+			} catch (err) {
+				warn(`❌ Failed to set config ${key}:`, err);
+			}
+		}
+
+		const polling = settings.polling_cooldown;
+		if (typeIs(polling, "number")) {
+			ServerScriptService.SetAttribute("gamesettings_polling_cooldown", polling);
+		}
 	}
 }

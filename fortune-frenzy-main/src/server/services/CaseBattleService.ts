@@ -6,14 +6,17 @@ import { ItemManagementService } from "./ItemManagementService";
 import { Request } from "server/util/packeter";
 import log from "shared/util/log";
 import { setDecimalPlaces } from "shared/util/number-utils";
-import { Players, ServerScriptService } from "@rbxts/services";
+import { HttpService, Players, ServerScriptService } from "@rbxts/services";
 import { Events } from "server/network";
 import getPollingCooldown from "server/util/get-polling-cooldown";
+import { GameEvents } from "server/util/cross-server-channels/GameEvents";
 
 @Service()
 export class CaseBattleService implements OnStart {
-	private readonly COMPLETED_CLEANUP_INTERVAL = 30;
+	private readonly COMPLETED_CLEANUP_INTERVAL = 10;
 	private supportsGlobalCompletedCleanup = true;
+	private completedBattleTimestamps = new Map<string, number>();
+	private locallyCleanedUpIds = new Set<string>();
 
 	constructor(
 		private PlayerManagementService: PlayerManagementService,
@@ -26,6 +29,13 @@ export class CaseBattleService implements OnStart {
 	async onStart(): Promise<void> {
 		const startTime = tick();
 		log("warn", "⌛ [CaseBattleService] Starting...");
+
+		Players.PlayerRemoving.Connect((player) => {
+			this.handlePlayerDisconnect(player);
+		});
+
+		this.subscribeToCrossServerEvents();
+
 		for (let attempt = 1; attempt <= 4; attempt++) {
 			await this.refreshCases();
 			if (this.CaseBattleCases.size() > 0) break;
@@ -34,10 +44,61 @@ export class CaseBattleService implements OnStart {
 				task.wait(0.35);
 			}
 		}
-		print("[CASEBATTLES] Refreshed cases", this.CaseBattleCases);
 		this.startCaseBattlePolling();
 		this.startCompletedCaseBattleCleanup();
 		log("print", `✅ [CaseBattleService] Started in ${setDecimalPlaces(tick() - startTime)}s`);
+	}
+
+	private subscribeToCrossServerEvents(): void {
+		GameEvents.subscribe("casebattle_update", () => {
+			task.spawn(() => this.updateCaseBattles());
+		});
+
+		GameEvents.subscribe("casebattle_remove", (msg) => {
+			const ids = msg.ids ?? [];
+			if (ids.size() === 0) return;
+			ids.forEach((id) => this.locallyCleanedUpIds.add(id));
+			this.CaseBattles = this.CaseBattles.filter((b) => !ids.includes(b.id));
+			Events.CaseBattlesUpdated.broadcast({ updated: [], removed: ids });
+		});
+	}
+
+	private handlePlayerDisconnect(player: Player): void {
+		const userId = tostring(player.UserId);
+
+		for (const battle of this.CaseBattles) {
+			if (battle.status !== "waiting_for_players") continue;
+
+			const isCreator = battle.players.size() > 0 && battle.players[0].id === userId;
+			if (!isCreator) continue;
+
+			const hasOtherPlayers = battle.players.size() > 1 && battle.players.some((p) => p.id !== userId);
+			if (hasOtherPlayers) continue;
+
+			task.spawn(async () => {
+				try {
+					const request = await new Request("POST", `/casebattles/cancel/${battle.id}`, undefined, {
+						user_id: player.UserId,
+					}).GetResponse();
+					if (request.Code === 200) {
+						const cost = this.calculateCaseBattleCost(battle.cases);
+						if (cost > 0) {
+							const transactionId = await this.PlayerManagementService.addCash(player, cost, {
+								transactionType: Enum.AnalyticsEconomyTransactionType.Gameplay.Name,
+								stockKeepingUnit: `CASE_BATTLE_REFUND_${battle.id}`,
+							});
+							if (transactionId) this.PlayerManagementService.confirmAddCash(transactionId);
+						}
+
+						this.CaseBattles = this.CaseBattles.filter((b) => b.id !== battle.id);
+						Events.CaseBattlesUpdated.broadcast({ updated: [], removed: [battle.id] });
+						log("print", `[CaseBattleService] Auto-cancelled battle ${battle.id} for disconnected creator ${userId}`);
+					}
+				} catch (err) {
+					log("warn", `[CaseBattleService] Failed to auto-cancel battle ${battle.id} on disconnect: ${err}`);
+				}
+			});
+		}
 	}
 
 	calculateCaseBattleCost(cases: string[]): number {
@@ -55,7 +116,6 @@ export class CaseBattleService implements OnStart {
 			while (true) {
 				try {
 					await this.updateCaseBattles();
-					// print("[CASEBATTLES] Refreshed casebattles", this.CaseBattles);
 				} catch (error) {
 					log("warn", `[CaseBattleService] Error updating case battles: ${error}`);
 				}
@@ -74,6 +134,11 @@ export class CaseBattleService implements OnStart {
 					(battle) => battle.id,
 				);
 				if (completedBattleIds.size() === 0) continue;
+
+				completedBattleIds.forEach((id) => {
+					this.locallyCleanedUpIds.add(id);
+					task.delay(120, () => this.locallyCleanedUpIds.delete(id));
+				});
 
 				this.CaseBattles = this.CaseBattles.filter((battle) => battle.status !== "completed");
 				Events.CaseBattlesUpdated.broadcast({
@@ -98,6 +163,10 @@ export class CaseBattleService implements OnStart {
 	}
 
 	private handleCaseBattleCompleted(battle: CaseBattleData) {
+		log(
+			"print",
+			`[CaseBattleService] handleCaseBattleCompleted: id=${battle.id}, status=${battle.status}, winners_info=${HttpService.JSONEncode(battle.winners_info ?? [])}`,
+		);
 		const winners = new Map<string, number>();
 		for (const winner of battle.winners_info ?? []) {
 			winners.set(winner.player_id, winner.amount_won);
@@ -114,6 +183,8 @@ export class CaseBattleService implements OnStart {
 			const amountWon = winners.get(participant.id) ?? 0;
 			const didWin = winners.has(participant.id);
 			const activityText = didWin ? `Won $${math.floor(amountWon)} in Case Battles` : "Lost a Case Battle round";
+
+			log("print", `[CaseBattleService] Payout: player=${participant.id}, didWin=${didWin}, amountWon=${amountWon}`);
 
 			if (didWin && amountWon > 0) {
 				const payoutTransactionId = this.PlayerManagementService.addCash(player, amountWon, {
@@ -146,16 +217,28 @@ export class CaseBattleService implements OnStart {
 			return;
 		}
 
-		const caseBattles = (Response as { casebattles: CaseBattleData[] }).casebattles;
+		const rawCaseBattles = (Response as { casebattles: CaseBattleData[] }).casebattles;
+		const caseBattles = rawCaseBattles.filter((cb) => !this.locallyCleanedUpIds.has(cb.id));
+
 		const oldById = new Map(this.CaseBattles.map((cb) => [cb.id, cb]));
 		const newIds = new Set(caseBattles.map((cb) => cb.id));
-		const removed = this.CaseBattles.filter((cb) => !newIds.has(cb.id)).map((cb) => cb.id);
+		const removed = this.CaseBattles.filter((cb) => {
+			if (newIds.has(cb.id)) return false;
+			if (cb.status === "completed") {
+				const seenAt = this.completedBattleTimestamps.get(cb.id) ?? tick();
+				this.completedBattleTimestamps.set(cb.id, seenAt);
+				return tick() - seenAt >= 15;
+			}
+			return true;
+		}).map((cb) => cb.id);
+		removed.forEach((id) => this.completedBattleTimestamps.delete(id));
 		const updated: CaseBattleData[] = [];
 
 		for (const cb of caseBattles) {
 			const prev = oldById.get(cb.id);
 			if (prev && prev.status !== "completed" && cb.status === "completed") {
 				this.handleCaseBattleCompleted(cb);
+				this.completedBattleTimestamps.set(cb.id, tick());
 			}
 
 			const statusChanged = prev !== undefined && prev.status !== cb.status;
@@ -181,6 +264,7 @@ export class CaseBattleService implements OnStart {
 		this.CaseBattles = caseBattles;
 
 		if (updated.size() > 0 || removed.size() > 0) {
+			log("print", `[CaseBattleService] Broadcasting CaseBattlesUpdated: updated=[${updated.map(cb => cb.id).join(",")}], removed=[${removed.join(",")}]`);
 			Events.CaseBattlesUpdated.broadcast({
 				updated,
 				removed,
@@ -266,6 +350,7 @@ export class CaseBattleService implements OnStart {
 			updated: [response.data],
 			removed: [],
 		});
+		GameEvents.publish("casebattle_update");
 
 		return { status: "success", code: 200, message: response.data.id };
 	}
@@ -324,6 +409,7 @@ export class CaseBattleService implements OnStart {
 			updated: [response.data],
 			removed: [],
 		});
+		GameEvents.publish("casebattle_update");
 
 		return { status: "success", message: response.data.id, code: 200 };
 	}

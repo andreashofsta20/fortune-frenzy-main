@@ -15,6 +15,11 @@ currentlyforgiving
 
 */
 
+// Create Flamework remotes in ReplicatedStorage before anything else. If the client runs
+// `GlobalEvents.createClient` before the server has called `createServer`, it blocks on
+// `shared/network@GlobalEvents` (see createRemoteInstance.lua).
+import "server/network";
+
 import { ServerScriptService, MarketplaceService } from "@rbxts/services";
 import { Flamework } from "@flamework/core";
 

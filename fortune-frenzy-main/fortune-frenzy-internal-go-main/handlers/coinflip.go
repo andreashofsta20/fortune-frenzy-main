@@ -21,3 +21,11 @@ func GetCoinflips(c *fiber.Ctx) error {
 func StartCoinflip(c *fiber.Ctx) error {
 	return coinflip.StartCoinflip(c)
 }
+
+func JoinCoinflip(c *fiber.Ctx) error {
+	return coinflip.JoinCoinflip(c)
+}
+
+func CallBot(c *fiber.Ctx) error {
+	return coinflip.CallBot(c)
+}

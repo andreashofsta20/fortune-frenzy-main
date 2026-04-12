@@ -14,9 +14,12 @@ import { Request } from "server/util/packeter";
 import { addCommasToNumber, setDecimalPlaces } from "shared/util/number-utils";
 import log from "shared/util/log";
 import getPollingCooldown from "server/util/get-polling-cooldown";
+import { getPlayersOnMenu } from "server/util/player-menu-tracker";
 
 @Service()
 export class MarketplaceService implements OnStart {
+	private readonly FALLBACK_POLL_INTERVAL = 12;
+
 	constructor(
 		private ItemManagementService: ItemManagementService,
 		private PlayerManagementService: PlayerManagementService,
@@ -30,8 +33,11 @@ export class MarketplaceService implements OnStart {
 		task.spawn(async () => {
 			// eslint-disable-next-line no-constant-condition
 			while (true) {
-				await this.updateListingsCache();
-				task.wait(getPollingCooldown());
+				const isMarketplaceVisible = getPlayersOnMenu("Marketplace").size() > 0;
+				if (isMarketplaceVisible) {
+					await this.updateListingsCache();
+				}
+				task.wait(isMarketplaceVisible ? getPollingCooldown() : this.FALLBACK_POLL_INTERVAL);
 			}
 		});
 		log("print", `✅ [MarketplaceService] Started in ${setDecimalPlaces(tick() - start_time)}s`);
@@ -210,7 +216,7 @@ export class MarketplaceService implements OnStart {
 			return { status: "error", code: request.Code, message: response.error };
 		}
 
-		log("print", `[MarketplaceService] Player ${player.UserId} successfully ${action}ed UAID ${uaid}`);
+		log("info", `[MarketplaceService] Player ${player.UserId} successfully ${action}ed UAID ${uaid}`);
 
 		const itemId = this.ItemManagementService.getItemIdFromUAID(uaid);
 		const itemInfo = itemId ? this.ItemManagementService.ItemInfo.get(itemId) : undefined;

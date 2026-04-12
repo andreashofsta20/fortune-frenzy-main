@@ -138,8 +138,6 @@ export function MainMarketplaceGrid({ parentFrameRef, visible }: Props) {
 			id: string;
 		}
 
-		warn("Sorting by", state.sortOrder);
-
 		const sortItems = (a: TileData, b: TileData): boolean => {
 			switch (state.sortOrder) {
 				case "value_high":

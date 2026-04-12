@@ -2,46 +2,26 @@ package routes
 
 import (
 	"ffinternal-go/handlers"
-	// "ffinternal-go/middleware"
+	"ffinternal-go/middleware"
 
 	"github.com/gofiber/fiber/v2"
 )
 
 func SetupMarketplaceRoutes(app *fiber.App) {
+	auth := middleware.Authorization(middleware.AuthTypeServerKey)
 	marketplace := app.Group("/marketplace")
 
-	marketplace.Get("/items",
-		// middleware.Authorization(middleware.AuthTypeServerKey),
-		handlers.GetAllItems,
-	)
+	marketplace.Get("/items", auth, handlers.GetAllItems)
+	marketplace.Get("/items/all/listings", auth, handlers.GetListings)
+	marketplace.Get("/items/:id/listings", auth, handlers.GetListings)
+	marketplace.Get("/items/:id", auth, handlers.GetItemByID)
 
-	marketplace.Get("/items/:id",
-		// middleware.Authorization(middleware.AuthTypeServerKey),
-		handlers.GetItemByID,
-	)
+	marketplace.Get("/listings", auth, handlers.GetListings)
+	marketplace.Get("/listings/:id", auth, handlers.GetListings)
 
-	marketplace.Get("/listings",
-		// middleware.Authorization(middleware.AuthTypeServerKey),
-		handlers.GetListings,
-	)
+	marketplace.Get("/owners/:id", auth, handlers.GetOwners)
 
-	marketplace.Get("/listings/:id",
-		// middleware.Authorization(middleware.AuthTypeServerKey),
-		handlers.GetListings,
-	)
-
-	marketplace.Get("/owners/:id",
-		// middleware.Authorization(middleware.AuthTypeServerKey),
-		handlers.GetOwners,
-	)
-
-	marketplace.Post("/listings/:uaid",
-		// middleware.Authorization(middleware.AuthTypeServerKey),
-		handlers.ListItem,
-	)
-
-	marketplace.Post("/copies/:uaid/buy",
-		// middleware.Authorization(middleware.AuthTypeServerKey),
-		handlers.PurchaseItem,
-	)
+	marketplace.Post("/listings/:uaid", auth, handlers.ListItem)
+	marketplace.Post("/copies/:uaid/list", auth, handlers.ListItem)
+	marketplace.Post("/copies/:uaid/buy", auth, handlers.PurchaseItem)
 }

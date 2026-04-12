@@ -26,6 +26,7 @@ export class TradingService implements OnStart {
 	private readonly NOTIFICATION_EXPIRY = 3600; // 1 hour in seconds
 	private readonly MAX_TRADE_UNIQUE_ITEMS = 8;
 	private readonly MAX_TRADE_ITEM_QUANTITY = 999;
+	private readonly FALLBACK_POLL_INTERVAL = 10;
 
 	constructor(
 		private playerManagementService: PlayerManagementService,
@@ -193,7 +194,8 @@ export class TradingService implements OnStart {
 		// eslint-disable-next-line no-constant-condition
 		while (true) {
 			await this.updateTrades();
-			task.wait(getPollingCooldown());
+			const playersOnline = Players.GetPlayers().size() > 0;
+			task.wait(playersOnline ? getPollingCooldown() : this.FALLBACK_POLL_INTERVAL);
 		}
 	}
 

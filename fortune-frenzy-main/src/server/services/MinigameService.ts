@@ -6,8 +6,10 @@ import { MemoryStoreService, Players } from "@rbxts/services";
 import { Request } from "server/util/packeter";
 import { Events } from "server/network";
 import getPollingCooldown from "server/util/get-polling-cooldown";
+import { getPlayersOnMenu } from "server/util/player-menu-tracker";
 
 const CURRENT_MINIGAMES = ["Coinflip", "ItemCases"];
+const MINIGAME_STATS_FALLBACK_INTERVAL = 12;
 
 @Service()
 export class MinigameService implements OnStart {
@@ -32,16 +34,19 @@ export class MinigameService implements OnStart {
 		task.spawn(async () => {
 			// eslint-disable-next-line no-constant-condition
 			while (true) {
-				await this.UpdateGlobalMinigameStats();
+				const hasInterestedMenus = getPlayersOnMenu("Minigames", "Coinflip", "ItemCases").size() > 0;
+				if (hasInterestedMenus) {
+					await this.UpdateGlobalMinigameStats();
 
-				Players.GetPlayers().forEach(async (player) => {
-					const profile = await this.PlayerManagementService.getOnlineProfile(player);
-					if (!profile) return;
+					Players.GetPlayers().forEach(async (player) => {
+						const profile = await this.PlayerManagementService.getOnlineProfile(player);
+						if (!profile) return;
 
-					Events.MinigamesUpdated.fire(player, this._GLOBAL_MINIGAME_STATS, profile.Data.MinigameData);
-				});
+						Events.MinigamesUpdated.fire(player, this._GLOBAL_MINIGAME_STATS, profile.Data.MinigameData);
+					});
+				}
 
-				task.wait(getPollingCooldown());
+				task.wait(hasInterestedMenus ? getPollingCooldown() : MINIGAME_STATS_FALLBACK_INTERVAL);
 			}
 		});
 

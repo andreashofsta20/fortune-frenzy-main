@@ -1,6 +1,8 @@
 // FORCE HIDE LOADING SCREEN ON STARTUP
 import { isLoadingAtom } from "client/utils/global-state";
 isLoadingAtom(false);
+// Pairs with server `import "server/network"`: attach to remotes before controllers load.
+import "client/network";
 import { Flamework } from "@flamework/core";
 import { RunService } from "@rbxts/services";
 

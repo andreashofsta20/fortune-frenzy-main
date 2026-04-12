@@ -31,9 +31,11 @@ func CancelCoinflip(c *fiber.Ctx) error {
 
 	pipe := redis.TxPipeline()
 	pipe.Del(c.Context(), "coinflip:"+coinflipID)
-	pipe.Del(c.Context(), "coinflip:"+coinflipID+":user:"+*coinflipData.Player1.ID)
+	if coinflipData.Player1.ID != nil {
+		pipe.Del(c.Context(), "coinflip:"+coinflipID+":user:"+*coinflipData.Player1.ID)
+	}
 
-	if coinflipData.Player2 != nil {
+	if coinflipData.Player2 != nil && coinflipData.Player2.ID != nil {
 		pipe.Del(c.Context(), "coinflip:"+coinflipID+":user:"+*coinflipData.Player2.ID)
 	}
 

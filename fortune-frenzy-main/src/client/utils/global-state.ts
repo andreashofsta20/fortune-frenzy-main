@@ -1,4 +1,4 @@
-import { atom, subscribe } from "@rbxts/charm";
+import { atom } from "@rbxts/charm";
 
 /** Navigation State */
 export const activeMenuAtom = atom<string>("");
@@ -83,6 +83,3 @@ export const jackpotSelectionDataAtom = atom<
 	| undefined
 >(undefined);
 
-subscribe(isNavigationVisibleAtom, (newValue, oldValue) => {
-	print(`isNavigationVisibleAtom changed from ${oldValue} to ${newValue}`);
-});

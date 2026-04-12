@@ -45,12 +45,22 @@ func JoinCoinflip(c *fiber.Ctx) error {
 	defer db.Close()
 
 	userIDStr := strconv.FormatInt(body.UserID, 10)
-	
-	_, err = redis.SetNX(c.Context(), "coinflip:"+coinflipID+":user:"+userIDStr, "active", 5*time.Second).Result()
+
+	lockKey := "coinflip:" + coinflipID + ":user:" + userIDStr
+	lockAcquired, err := redis.SetNX(c.Context(), lockKey, "active", 5*time.Second).Result()
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to join coinflip"})
 	}
-	
+	if !lockAcquired {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Coinflip join already in progress"})
+	}
+	keepUserLock := false
+	defer func() {
+		if !keepUserLock {
+			redis.Del(c.Context(), lockKey)
+		}
+	}()
+
 	keys, err := redis.Keys(c.Context(), "coinflip:*:user:"+userIDStr).Result()
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to check active coinflips"})
@@ -73,7 +83,7 @@ func JoinCoinflip(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Coinflip cannot be joined"})
 	}
 
-	if coinflip.Player1.ID == &userIDStr {
+	if coinflip.Player1.ID != nil && *coinflip.Player1.ID == userIDStr {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Cannot join your own coinflip"})
 	}
 
@@ -119,10 +129,11 @@ func JoinCoinflip(c *fiber.Ctx) error {
 
 	pipe := redis.TxPipeline()
 	pipe.Set(c.Context(), "coinflip:"+coinflipID, string(data), coinflipTTL)
-	pipe.Set(c.Context(), "coinflip:"+coinflipID+":user:"+userIDStr, "active", coinflipTTL)
+	pipe.Set(c.Context(), lockKey, "active", coinflipTTL)
 	if _, err = pipe.Exec(c.Context()); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to join coinflip"})
 	}
+	keepUserLock = true
 
 	go func() {
 		time.Sleep(1500 * time.Millisecond)

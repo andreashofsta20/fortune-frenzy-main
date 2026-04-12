@@ -158,6 +158,36 @@ function buildMaxSelection(
 	return nextSelection;
 }
 
+function buildSelectionFromItemIds(
+	itemIds: string[],
+	inventory: Map<string, string[]>,
+	itemInfo: Map<string, Item>,
+	selectionData: InventorySelectionData,
+) {
+	const nextSelection = {} as Record<string, number>;
+	let totalSelectedValue = 0;
+	let totalSelectedItems = 0;
+
+	for (const itemId of itemIds) {
+		const itemData = itemInfo.get(itemId);
+		if (!itemData) continue;
+		if (itemData.value < selectionData.minimumValue || itemData.value > selectionData.maximumValue) continue;
+
+		const ownedQuantity = inventory.get(itemId)?.size() ?? 0;
+		const currentQuantity = nextSelection[itemId] ?? 0;
+		const maxPerItem = selectionData.maximumPerItem === math.huge ? ownedQuantity : selectionData.maximumPerItem;
+		if (currentQuantity >= math.min(maxPerItem, ownedQuantity)) continue;
+		if (selectionData.totalMaximum !== math.huge && totalSelectedItems >= selectionData.totalMaximum) continue;
+		if (selectionData.maximumValue !== math.huge && totalSelectedValue + itemData.value > selectionData.maximumValue) continue;
+
+		nextSelection[itemId] = currentQuantity + 1;
+		totalSelectedItems += 1;
+		totalSelectedValue += itemData.value;
+	}
+
+	return nextSelection;
+}
+
 function InventoryMenuComponent({
 	visible,
 	handleCloseButton = defaultHandleCloseButton,
@@ -620,13 +650,14 @@ function InventoryMenuComponent({
 										selectionData?.totalMaximum ?? 10,
 									);
 									isLoadingAtom(false);
-
-									const itemIdCounts: { [itemId: string]: number } = {};
-									itemIds.forEach((id) => {
-										itemIdCounts[id] = (itemIdCounts[id] || 0) + 1;
-									});
-
-									selectionData?.setCurrentSelection(itemIdCounts);
+									selectionData?.setCurrentSelection(
+										buildSelectionFromItemIds(
+											itemIds,
+											inventory,
+											clientStateController.ItemInfo,
+											selectionData,
+										),
+									);
 								},
 							}}
 						>

@@ -8,10 +8,38 @@ import { JackpotData, JackpotPotsResponse } from "typings/APIResponses";
 import { Events } from "server/network";
 import getPollingCooldown from "server/util/get-polling-cooldown";
 import filterServerSeed from "server/util/jackpot/filterServerSeed";
-import { ServerScriptService, Players } from "@rbxts/services";
+import { HttpService, ServerScriptService, Players } from "@rbxts/services";
 import { GetUAIDsForOnlineInventory } from "server/util/get-uaid-from-quantity";
 import { ItemManagementService } from "./ItemManagementService";
 import { JACKPOT_INFINITY_VALUE_CAP, normalizeJackpotValueCap } from "shared/util/jackpot-value-cap";
+import { GameEvents } from "server/util/cross-server-channels/GameEvents";
+
+declare const fetch: (url: string, init: defined) => Promise<unknown>;
+
+function emitAgentDebugLog(location: string, message: string, data: Record<string, unknown>, hypothesisId: string) {
+	// #region agent log
+	task.spawn(() => {
+		pcall(() =>
+			fetch("http://127.0.0.1:7528/ingest/1b6715ac-5dbe-4e21-b0fb-3326720d79ad", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+					"X-Debug-Session-Id": "4ef876",
+				},
+				body: HttpService.JSONEncode({
+					sessionId: "4ef876",
+					location,
+					message,
+					data,
+					timestamp: DateTime.now().UnixTimestampMillis,
+					runId: "pre-fix",
+					hypothesisId,
+				}),
+			}),
+		);
+	});
+	// #endregion
+}
 
 @Service()
 export class JackpotService implements OnStart {
@@ -27,8 +55,58 @@ export class JackpotService implements OnStart {
 	async onStart(): Promise<void> {
 		const startTime = tick();
 		log("warn", "⌛ [JackpotService] Starting...");
+
+		Players.PlayerRemoving.Connect((player) => {
+			this.handlePlayerDisconnect(player);
+		});
+
+		this.subscribeToCrossServerEvents();
 		this.startJackpotPolling();
 		log("print", `✅ [JackpotService] Started in ${setDecimalPlaces(tick() - startTime)}s`);
+	}
+
+	private subscribeToCrossServerEvents(): void {
+		GameEvents.subscribe("jackpot_update", () => {
+			task.spawn(() => this.updateJackpots());
+		});
+
+		GameEvents.subscribe("jackpot_remove", (msg) => {
+			const ids = msg.ids ?? [];
+			if (ids.size() === 0) return;
+			this.Jackpots = this.Jackpots.filter((jp) => !ids.includes(jp.id));
+			Events.JackpotsUpdated.broadcast({ updated: [], removed: ids });
+		});
+	}
+
+	private handlePlayerDisconnect(player: Player): void {
+		const userId = tostring(player.UserId);
+
+		for (const jackpot of this.Jackpots) {
+			if (jackpot.status !== "waiting_for_start") continue;
+
+			const isMember = jackpot.members.some((m) => m.player.id === userId);
+			if (!isMember) continue;
+
+			task.spawn(async () => {
+				try {
+					const { Code, Response } = await new Request("POST", `/jackpot/leave/${jackpot.id}`, undefined, {
+						user_id: player.UserId,
+					}).GetResponse();
+
+					if (Code === 200) {
+						const updatedPot = (Response as { pot?: JackpotData }).pot;
+						if (updatedPot) {
+							const index = this.Jackpots.findIndex((jp) => jp.id === updatedPot.id);
+							if (index !== -1) this.Jackpots[index] = updatedPot;
+							Events.JackpotsUpdated.broadcast({ updated: [filterServerSeed(updatedPot)], removed: [] });
+						}
+						log("print", `[JackpotService] Auto-left jackpot ${jackpot.id} for disconnected player ${userId}`);
+					}
+				} catch (err) {
+					log("warn", `[JackpotService] Failed to auto-leave jackpot ${jackpot.id} on disconnect: ${err}`);
+				}
+			});
+		}
 	}
 
 	private startJackpotPolling(): void {
@@ -47,6 +125,17 @@ export class JackpotService implements OnStart {
 
 	async updateJackpots(): Promise<void> {
 		const { Code, Response } = await new Request("GET", "/jackpot/pots").GetResponse();
+		// #region agent log
+		emitAgentDebugLog(
+			"src/server/services/JackpotService.ts:124",
+			"jackpot poll response",
+			{
+				code: Code,
+				hasPotsArray: typeIs((Response as JackpotPotsResponse).pots, "table"),
+			},
+			"H4",
+		);
+		// #endregion
 		if (Code !== 200) {
 			log("warn", `[JackpotService] Failed to fetch jackpots. Status: ${Code}`);
 			return;
@@ -77,11 +166,13 @@ export class JackpotService implements OnStart {
 		this.Jackpots = pots;
 
 		if (updated.size() > 0 || removed.size() > 0) {
+			log("print", `[JackpotService] Broadcasting JackpotsUpdated: updated=[${updated.map(jp => jp.id).join(",")}], removed=[${removed.join(",")}]`);
 			Events.JackpotsUpdated.broadcast({ updated, removed });
 		}
 	}
 
 	private handleJackpotComplete(pot: JackpotData) {
+		log("print", `[JackpotService] handleJackpotComplete: id=${pot.id}, status=${pot.status}, winnerId=${pot.winning_data?.player.id}`);
 		const winnerId = pot.winning_data?.player.id;
 		const totalPotValue = pot.members.reduce((sum, member) => sum + member.total_value, 0);
 
@@ -92,6 +183,7 @@ export class JackpotService implements OnStart {
 			const player = Players.GetPlayerByUserId(userId);
 			if (player) {
 				const didWin = winnerId !== undefined && winnerId === member.player.id;
+				log("print", `[JackpotService] Payout: player=${member.player.id}, didWin=${didWin}, amountWon=${didWin ? totalPotValue : 0}`);
 				this.PlayerManagementService.recordMinigameOutcome(
 					player,
 					"Jackpot",
@@ -255,6 +347,7 @@ export class JackpotService implements OnStart {
 				updated: [filterServerSeed(updatedPot)],
 				removed: [],
 			});
+			GameEvents.publish("jackpot_update");
 		}
 
 		try {
@@ -296,6 +389,7 @@ export class JackpotService implements OnStart {
 				updated: [filterServerSeed(updatedPot)],
 				removed: [],
 			});
+			GameEvents.publish("jackpot_update");
 		}
 
 		try {

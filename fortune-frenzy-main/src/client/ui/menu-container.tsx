@@ -10,6 +10,7 @@ import {
 	isNavigationVisibleAtom,
 	menuUpscaledAtom,
 } from "client/utils/global-state";
+import { Events } from "client/network";
 
 import { MarketplaceMenu } from "./menus/MarketplaceMenu";
 import { TradingMenu } from "./menus/TradingMenu";
@@ -64,6 +65,10 @@ function MenuContainer() {
 		menuHolderPositionMotion.set(new UDim2(0.5, 0, 0.55, 0));
 		menuHolderPositionMotion.tween(new UDim2(0.5, 0, 0.5, 0), tweenParams);
 	}, [menuHolderPositionMotion]);
+
+	useEffect(() => {
+		Events.CurrentMenu.fire(currentMenu);
+	}, [currentMenu]);
 
 	useEffect(() => {
 		if (currentMenu === "") {

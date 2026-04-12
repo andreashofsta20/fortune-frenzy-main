@@ -225,7 +225,16 @@ export const BattlePlayer = memo(
 		useEffect(() => {
 			const container = containerRef.current;
 			const currentPull = currentSpin.currentPull;
-			if (!container || !currentPull || !currentCaseData) return;
+			if (!container) return;
+
+			// Prevent late battle updates from retriggering a completed round spin.
+			if (battleData.status !== "in_progress") {
+				containerFramePositionMotion.immediate(new UDim2(0, 0, 0, 0));
+				overlayTransparencyMotion.immediate(0);
+				return;
+			}
+
+			if (!currentPull || !currentCaseData) return;
 
 			const findWinningItem = () => {
 				const caseItems = currentCaseData.items;

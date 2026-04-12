@@ -1,0 +1,17 @@
+{$DOMAIN} {
+	reverse_proxy ff-api:3004
+	encode gzip
+
+	header {
+		-Server
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+	}
+
+	log {
+		output file /data/access.log {
+			roll_size 10mb
+			roll_keep 3
+		}
+	}
+}

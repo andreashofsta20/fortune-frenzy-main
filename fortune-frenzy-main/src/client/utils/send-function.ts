@@ -1,6 +1,4 @@
 import { ClientSender } from "@flamework/networking/out/functions/types";
-import { palette } from "./palette";
-import { Players } from "@rbxts/services";
 
 /*
  * Utility helper that invokes a typed `ClientSender` while preserving its

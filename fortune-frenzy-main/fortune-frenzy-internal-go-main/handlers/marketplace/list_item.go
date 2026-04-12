@@ -1,6 +1,7 @@
 package marketplace
 
 import (
+	"database/sql"
 	"ffinternal-go/service"
 	"time"
 
@@ -62,6 +63,23 @@ func ListItem(c *fiber.Ctx) error {
 		})
 	}
 
+	var itemID string
+	var sellerID int64
+	if err := con.QueryRowContext(
+		c.Context(),
+		"SELECT item_id, owner_id FROM item_copies WHERE user_asset_id = ?",
+		userAssetID,
+	).Scan(&itemID, &sellerID); err != nil {
+		if err == sql.ErrNoRows {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+				"error": "user_asset_id not found",
+			})
+		}
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": err.Error(),
+		})
+	}
+
 	var expiresAt any
 	if body.Expiry != nil {
 		currentTime := time.Now().Unix()
@@ -76,11 +94,15 @@ func ListItem(c *fiber.Ctx) error {
 	}
 
 	query := `
-		INSERT INTO item_listings (user_asset_id, currency, expires_at, price)
-		VALUES (?, "cash", ?, ?)
-		ON DUPLICATE KEY UPDATE price = VALUES(price), expires_at = VALUES(expires_at);
+		INSERT INTO item_listings (user_asset_id, item_id, seller_id, currency, expires_at, price)
+		VALUES (?, ?, ?, "cash", ?, ?)
+		ON DUPLICATE KEY UPDATE
+			item_id = VALUES(item_id),
+			seller_id = VALUES(seller_id),
+			price = VALUES(price),
+			expires_at = VALUES(expires_at);
 	`
-	_, err = con.ExecContext(c.Context(), query, userAssetID, expiresAt, *body.Price)
+	_, err = con.ExecContext(c.Context(), query, userAssetID, itemID, sellerID, expiresAt, int64(*body.Price))
 	if err != nil {
 		if err.Error() == "No matching owner found for this user_asset_id" {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{

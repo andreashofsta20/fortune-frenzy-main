@@ -17,11 +17,15 @@ func InitMariaDB() {
 	log.Println("Initializing MariaDB")
 
 	var err error
-	dsn := fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?parseTime=true",
+	port := os.Getenv("MARIADB_PORT")
+	if port == "" {
+		port = "3306"
+	}
+	dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?parseTime=true",
 		os.Getenv("MARIADB_USER"),
 		os.Getenv("MARIADB_PASSWORD"),
 		os.Getenv("MARIADB_HOST"),
-		6033,
+		port,
 		"Game1",
 	)
 

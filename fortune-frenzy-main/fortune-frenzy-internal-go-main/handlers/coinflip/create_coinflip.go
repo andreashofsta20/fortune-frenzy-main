@@ -7,7 +7,7 @@ import (
 	"ffinternal-go/models"
 	"ffinternal-go/service"
 	"ffinternal-go/utilities"
-	"strconv"
+	"fmt"
 	"strings"
 	"time"
 
@@ -20,10 +20,22 @@ const (
 )
 
 type RequestBody struct {
-	UserID int64    `json:"user_id" validate:"required"`
-	Items  []string `json:"items" validate:"required,dive,required"`
-	Coin   int      `json:"coin" validate:"required,oneof=1 2"`
-	Type   string   `json:"type" validate:"required,oneof=server global friends"`
+	UserID interface{} `json:"user_id" validate:"required"`
+	Items  []string    `json:"items" validate:"required,dive,required"`
+	Coin   int         `json:"coin" validate:"required,oneof=1 2"`
+	Type   string      `json:"type" validate:"required,oneof=server global friends"`
+}
+
+func parseCoinflipUserID(raw interface{}) string {
+	switch v := raw.(type) {
+	case float64:
+		return fmt.Sprintf("%.0f", v)
+	case string:
+		if v != "" && v != "0" {
+			return v
+		}
+	}
+	return ""
 }
 
 func CreateCoinflip(c *fiber.Ctx) error {
@@ -36,7 +48,8 @@ func CreateCoinflip(c *fiber.Ctx) error {
 	if err := c.BodyParser(&body); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request"})
 	}
-	if body.UserID == 0 || len(body.Items) == 0 || (body.Coin != 1 && body.Coin != 2) ||
+	userIDStr := parseCoinflipUserID(body.UserID)
+	if userIDStr == "" || len(body.Items) == 0 || (body.Coin != 1 && body.Coin != 2) ||
 		(body.Type != "server" && body.Type != "global" && body.Type != "friends") {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request"})
 	}
@@ -56,7 +69,7 @@ func CreateCoinflip(c *fiber.Ctx) error {
 	rows, err := db.QueryContext(c.Context(),
 		"SELECT user_asset_id FROM item_copies WHERE user_asset_id IN (?"+
 			strings.Repeat(",?", len(body.Items)-1)+") AND owner_id = ?",
-		append(utilities.ToInterfaceSlice(body.Items), body.UserID)...,
+		append(utilities.ToInterfaceSlice(body.Items), userIDStr)...,
 	)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
@@ -74,8 +87,6 @@ func CreateCoinflip(c *fiber.Ctx) error {
 	if len(confirmedItems) != len(body.Items) {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid items"})
 	}
-
-	userIDStr := strconv.FormatInt(body.UserID, 10)
 	keys, err := redis.Keys(c.Context(), "coinflip:*:user:"+userIDStr).Result()
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to check active coinflips"})

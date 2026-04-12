@@ -1,5 +1,5 @@
 import { Controller, OnStart } from "@flamework/core";
-import { MarketplaceService, Players, ContentProvider } from "@rbxts/services";
+import { ContentProvider, MarketplaceService, Players, ReplicatedStorage } from "@rbxts/services";
 import Signal from "@rbxts/signal";
 import { peek, subscribe } from "@rbxts/charm";
 import { Functions, Events } from "client/network";
@@ -115,6 +115,10 @@ export class ClientStateController implements OnStart {
 	private pendingUpdates = new Map<string, PendingUpdateValue>();
 	private isUpdateScheduled = false;
 	private batchUpdateInterval = 0.1;
+	private readonly completedCoinflipRemovalGrace = 12;
+	private readonly completedCaseBattleRemovalGrace = 12;
+	private completedCoinflipSeenAt = new Map<string, number>();
+	private completedCaseBattleSeenAt = new Map<string, number>();
 	public DailyRewardInfo = {
 		available: false,
 		rewards: {} as Record<
@@ -306,7 +310,33 @@ export class ClientStateController implements OnStart {
 	// PRIVATE METHODS - LOADING & INITIAL SETUP
 	// ----------------------------------------------------------------
 
+	private waitForServerNetworkingReady(maxSeconds: number) {
+		const deadline = tick() + maxSeconds;
+		while (tick() < deadline) {
+			if (ReplicatedStorage.GetAttribute("__FF_NETWORK_READY") === true) {
+				return;
+			}
+			task.wait(0.05);
+		}
+	}
+
+	/** Avoid SetClientData before profile exists — prevents flaky Modding/PMS races during parallel OnStart. */
+	private waitForLocalPlayerServerLoaded(maxSeconds: number) {
+		const lp = Players.LocalPlayer;
+		if (!lp) return;
+		const deadline = tick() + maxSeconds;
+		while (tick() < deadline) {
+			if (lp.GetAttribute("__SERVER_LOADED") === true) {
+				return;
+			}
+			task.wait(0.1);
+		}
+	}
+
 	private async loadInitialData() {
+		this.waitForServerNetworkingReady(45);
+		this.waitForLocalPlayerServerLoaded(90);
+
 		await requestServer(Functions.Loading.SetClientData, "Failed to set client time data", {
 			current_time: os.time(),
 		});
@@ -692,7 +722,6 @@ export class ClientStateController implements OnStart {
 		}
 
 		if (this.pendingUpdates.has("Jackpots")) {
-			print("🔍 [ClientStateController] Processing jackpot updates");
 			const jackpots = this.pendingUpdates.get("Jackpots") as JackpotData[];
 			this.Jackpots = jackpots;
 			this.JackpotChangedEvent.Fire(jackpots);
@@ -768,13 +797,45 @@ export class ClientStateController implements OnStart {
 		});
 	}
 
+	private pendingCoinflipRemovals = new Set<string>();
+
 	private updateCoinflipsData(removedIds: string[], updatedCoinflips: Coinflip[]): Coinflip[] {
 		let newCoinflips = [...this.Coinflips];
 		removedIds.forEach((id) => {
+			const existing = newCoinflips.find((cf) => cf.id === id);
+			if (!existing) return;
+
+			if (existing.status === "completed" || existing.status === "failed") {
+				const seenAt = this.completedCoinflipSeenAt.get(id) ?? tick();
+				this.completedCoinflipSeenAt.set(id, seenAt);
+				if (tick() - seenAt < this.completedCoinflipRemovalGrace) {
+					if (!this.pendingCoinflipRemovals.has(id)) {
+						this.pendingCoinflipRemovals.add(id);
+						const remaining = this.completedCoinflipRemovalGrace - (tick() - seenAt) + 0.5;
+						task.delay(remaining, () => {
+							this.pendingCoinflipRemovals.delete(id);
+							this.completedCoinflipSeenAt.delete(id);
+							this.Coinflips = this.Coinflips.filter((cf) => cf.id !== id);
+							this.CoinflipChangedEvent.Fire(this.Coinflips);
+						});
+					}
+					return;
+				}
+			}
+
 			newCoinflips = newCoinflips.filter((cf) => cf.id !== id);
+			this.completedCoinflipSeenAt.delete(id);
 		});
 
 		updatedCoinflips.forEach((cf) => {
+			if (cf.status === "completed" || cf.status === "failed") {
+				if (!this.completedCoinflipSeenAt.has(cf.id)) {
+					this.completedCoinflipSeenAt.set(cf.id, tick());
+				}
+			} else {
+				this.completedCoinflipSeenAt.delete(cf.id);
+			}
+
 			const index = newCoinflips.findIndex((existing) => existing.id === cf.id);
 			if (index !== -1) {
 				newCoinflips[index] = cf;
@@ -794,13 +855,45 @@ export class ClientStateController implements OnStart {
 		});
 	}
 
+	private pendingCaseBattleRemovals = new Set<string>();
+
 	private updateCaseBattlesData(removedIds: string[], updatedCaseBattles: CaseBattleData[]): CaseBattleData[] {
 		let newCaseBattles = [...this.CaseBattles];
 		removedIds.forEach((id) => {
+			const existing = newCaseBattles.find((cb) => cb.id === id);
+			if (!existing) return;
+
+			if (existing.status === "completed") {
+				const seenAt = this.completedCaseBattleSeenAt.get(id) ?? tick();
+				this.completedCaseBattleSeenAt.set(id, seenAt);
+				if (tick() - seenAt < this.completedCaseBattleRemovalGrace) {
+					if (!this.pendingCaseBattleRemovals.has(id)) {
+						this.pendingCaseBattleRemovals.add(id);
+						const remaining = this.completedCaseBattleRemovalGrace - (tick() - seenAt) + 0.5;
+						task.delay(remaining, () => {
+							this.pendingCaseBattleRemovals.delete(id);
+							this.completedCaseBattleSeenAt.delete(id);
+							this.CaseBattles = this.CaseBattles.filter((cb) => cb.id !== id);
+							this.CaseBattleChangedEvent.Fire(this.CaseBattles);
+						});
+					}
+					return;
+				}
+			}
+
 			newCaseBattles = newCaseBattles.filter((cb) => cb.id !== id);
+			this.completedCaseBattleSeenAt.delete(id);
 		});
 
 		updatedCaseBattles.forEach((cb) => {
+			if (cb.status === "completed") {
+				if (!this.completedCaseBattleSeenAt.has(cb.id)) {
+					this.completedCaseBattleSeenAt.set(cb.id, tick());
+				}
+			} else {
+				this.completedCaseBattleSeenAt.delete(cb.id);
+			}
+
 			const index = newCaseBattles.findIndex((existing) => existing.id === cb.id);
 			if (index !== -1) {
 				newCaseBattles[index] = cb;

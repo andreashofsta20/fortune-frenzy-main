@@ -73,9 +73,9 @@ export class PlayerManagementService implements OnStart {
 			if (event) {
 				event.Event.Connect((username, amount) => {
 					const userId = Players.GetUserIdFromNameAsync(username);
-					new Request("POST", `/users/${userId}/add-cash`, {
-						amount,
-					}).GetResponse();
+				new Request("POST", `/users/${userId}/add-cash`, undefined, {
+					amount,
+				}).GetResponse();
 				});
 			}
 
@@ -239,6 +239,8 @@ export class PlayerManagementService implements OnStart {
 		if (!request.Success) return;
 
 		const response = request.Response as CashChangeResponse;
+		if (!response.changes) return;
+
 		let totalPendingAmount = 0;
 		response.changes.forEach((change) => {
 			if (change.user_id !== tostring(player.UserId)) return;
@@ -617,7 +619,7 @@ export class PlayerManagementService implements OnStart {
 
 		if (wait) {
 			const start_time = tick();
-			while (!profile && tick() - start_time < 15) {
+			while (!profile && tick() - start_time < 60) {
 				profile = this.PlayerProfiles.get(this.KeyTemplate.format(player.UserId));
 				task.wait();
 			}
@@ -1072,14 +1074,16 @@ export class PlayerManagementService implements OnStart {
 	rollbackAddCash(transactionId: string) {
 		const data = this.AddCashEconomyEvents.get(transactionId);
 		if (!data) return;
-		this.addCash(data.player, data.amount);
+		const reverseAmount = data.flowType === Enum.AnalyticsEconomyFlowType.Sink ? data.amount : -data.amount;
+		this.addCash(data.player, reverseAmount);
 		this.AddCashEconomyEvents.delete(transactionId);
 	}
 
 	rollbackAddDiamonds(transactionId: string) {
 		const data = this.AddDiamondsEconomyEvents.get(transactionId);
 		if (!data) return;
-		this.addDiamonds(data.player, data.amount);
+		const reverseAmount = data.flowType === Enum.AnalyticsEconomyFlowType.Sink ? data.amount : -data.amount;
+		this.addDiamonds(data.player, reverseAmount);
 		this.AddDiamondsEconomyEvents.delete(transactionId);
 	}
 
@@ -1087,8 +1091,15 @@ export class PlayerManagementService implements OnStart {
 		const sessionProfile = this.getSessionOnlyProfile(player);
 		if (!sessionProfile) return;
 		const inventoryRequest = await new Request("GET", `/users/${player.UserId}/inventory`).GetResponse();
-		const inventoryResponse = inventoryRequest.Response as InventoryResponse;
-		const inventory = inventoryResponse.inventory;
+		const inventoryResponse = inventoryRequest.Response as InventoryResponse | undefined;
+		const inventory = inventoryResponse?.inventory;
+
+		if (!inventoryRequest.Success || !inventory) {
+			warn(
+				`[PlayerManagementService] refreshInventory failed for ${player.UserId} (Success=${inventoryRequest.Success}, Code=${inventoryRequest.Code})`,
+			);
+			return;
+		}
 		sessionProfile.OwnedUAIDs = inventory.map((item) => item[1]);
 		this.itemManagementService.registerUAIDs(
 			inventory.map((item) => {
@@ -1126,7 +1137,6 @@ export class PlayerManagementService implements OnStart {
 		}, new Map<string, string[]>());
 
 		Events.InventoryUpdate.fire(player, groupedInventory);
-		Events.InventoryUpdae.fire(player, groupedInventory);
 	}
 
 	private offlineInventoryCache: Record<
@@ -1160,8 +1170,15 @@ export class PlayerManagementService implements OnStart {
 		if (cache && cache.lastUpdated + CACHE_COOLDOWN > tick()) return cache.items;
 
 		const inventoryRequest = await new Request("GET", `/users/${userId}/inventory`).GetResponse();
-		const inventoryResponse = inventoryRequest.Response as InventoryResponse;
-		const inventory = inventoryResponse.inventory;
+		const inventoryResponse = inventoryRequest.Response as InventoryResponse | undefined;
+		const inventory = inventoryResponse?.inventory;
+
+		if (!inventoryRequest.Success || !inventory) {
+			warn(
+				`[PlayerManagementService] getOfflineUserInventory failed for ${userId} (Code=${inventoryRequest.Code})`,
+			);
+			return [];
+		}
 
 		this.offlineInventoryCache[userId] = {
 			items: inventory,
@@ -1208,11 +1225,11 @@ export class PlayerManagementService implements OnStart {
 			item_counts: itemCounts,
 		}).GetResponse();
 		if (!request.Success) {
-			const response = request.Response as { error?: string };
+			const response = request.Response as { error?: string } | undefined;
 			return {
 				status: "error",
 				code: request.Code,
-				message: response.error ?? "Failed to remove items",
+				message: response?.error ?? "Failed to remove items",
 			};
 		}
 
@@ -1222,10 +1239,10 @@ export class PlayerManagementService implements OnStart {
 			await this.refreshInventory(targetPlayer);
 		}
 
-		const response = request.Response as { removed?: number };
+		const okBody = request.Response as { removed?: number } | undefined;
 		return {
 			status: "OK",
-			removed: response.removed ?? 0,
+			removed: okBody?.removed ?? 0,
 		};
 	}
 

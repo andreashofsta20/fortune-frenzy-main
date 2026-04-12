@@ -47,6 +47,9 @@ func Authorization(authType AuthType, requiredHeaders ...string) fiber.Handler {
 			log.Print("Validating internal authentication")
 			key := c.Get("internal-authentication")
 			if key == "" {
+				key = c.Get("x-internal-authentication")
+			}
+			if key == "" {
 				log.Print("Missing internal authentication key")
 				return &AuthError{Message: "Missing internal authentication key"}
 			}
@@ -116,7 +119,7 @@ func Authorization(authType AuthType, requiredHeaders ...string) fiber.Handler {
 
 		var authErr error
 
-		if c.Get("internal-authentication") != "" {
+		if c.Get("internal-authentication") != "" || c.Get("x-internal-authentication") != "" {
 			authErr = validateInternalAuth()
 		} else if authType == AuthTypeServerKey {
 			if len(requiredHeaders) > 0 && c.Get("packeter-master-key") != packeterBypassKey {

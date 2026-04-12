@@ -1,23 +1,16 @@
 package marketplace
 
 import (
-	"ffinternal-go/models"
+	"database/sql"
 	"ffinternal-go/service"
 	"strconv"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 )
 
 func GetListings(c *fiber.Ctx) error {
-	var id *int
-	idStr := c.Params("id")
-	if idStr != "" {
-		parsedId, err := strconv.Atoi(idStr)
-		if err != nil {
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid item ID"})
-		}
-		id = &parsedId
-	}
+	itemID := c.Params("id")
 
 	con, err := service.GetMariaDBConnection()
 	if err != nil {
@@ -27,11 +20,17 @@ func GetListings(c *fiber.Ctx) error {
 
 	var query string
 	var args []any
-	if id != nil {
-		query = "SELECT il.*, u.name AS username, u.display_name FROM item_listings il LEFT JOIN users u ON il.seller_id = u.user_id WHERE il.item_id = ? AND (il.expires_at > NOW() OR il.expires_at IS NULL);"
-		args = append(args, *id)
+	if itemID != "" {
+		query = `SELECT il.user_asset_id, il.item_id, il.seller_id, il.price, il.currency, il.listed_at, il.expires_at,
+		         u.name, u.display_name
+		         FROM item_listings il LEFT JOIN users u ON il.seller_id = u.user_id
+		         WHERE il.item_id = ? AND (il.expires_at > NOW() OR il.expires_at IS NULL)`
+		args = append(args, itemID)
 	} else {
-		query = "SELECT il.*, u.name AS username, u.display_name FROM item_listings il LEFT JOIN users u ON il.seller_id = u.user_id WHERE il.expires_at > NOW() OR il.expires_at IS NULL;"
+		query = `SELECT il.user_asset_id, il.item_id, il.seller_id, il.price, il.currency, il.listed_at, il.expires_at,
+		         u.name, u.display_name
+		         FROM item_listings il LEFT JOIN users u ON il.seller_id = u.user_id
+		         WHERE il.expires_at > NOW() OR il.expires_at IS NULL`
 	}
 
 	rows, err := con.QueryContext(c.Context(), query, args...)
@@ -40,13 +39,34 @@ func GetListings(c *fiber.Ctx) error {
 	}
 	defer rows.Close()
 
-	listings := make([]models.ItemListing, 0)
+	type ListingEntry struct {
+		UserAssetID string     `json:"user_asset_id"`
+		ItemID      string     `json:"item_id"`
+		SellerID    string     `json:"seller_id"`
+		Price       string     `json:"price"`
+		Currency    string     `json:"currency"`
+		CreatedAt   time.Time  `json:"created_at"`
+		ExpiresAt   *time.Time `json:"expires_at,omitempty"`
+		Username    *string    `json:"username,omitempty"`
+		DisplayName *string    `json:"display_name,omitempty"`
+	}
+
+	listings := make([]ListingEntry, 0)
 	for rows.Next() {
-		var listing models.ItemListing
-		if err := rows.Scan(&listing.UserAssetID, &listing.SellerID, &listing.Currency, &listing.CreatedAt, &listing.ExpiresAt, &listing.Price, &listing.ItemID, &listing.Username, &listing.DisplayName); err != nil {
+		var l ListingEntry
+		var username, displayName sql.NullString
+		var price int64
+		if err := rows.Scan(&l.UserAssetID, &l.ItemID, &l.SellerID, &price, &l.Currency, &l.CreatedAt, &l.ExpiresAt, &username, &displayName); err != nil {
 			continue
 		}
-		listings = append(listings, listing)
+		l.Price = strconv.FormatInt(price, 10)
+		if username.Valid {
+			l.Username = &username.String
+		}
+		if displayName.Valid {
+			l.DisplayName = &displayName.String
+		}
+		listings = append(listings, l)
 	}
 
 	return c.JSON(fiber.Map{"status": "OK", "listings": listings})

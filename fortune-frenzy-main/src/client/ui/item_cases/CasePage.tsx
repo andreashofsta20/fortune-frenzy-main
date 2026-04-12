@@ -27,7 +27,6 @@ import { Button } from "../core/Button";
 import { Functions } from "client/network";
 import { Corner } from "../tools/Corner";
 import { isLoadingAtom, isNavigationVisibleAtom } from "client/utils/global-state";
-import { MarketplaceService } from "@rbxts/services";
 import { requestServer } from "client/utils/send-function";
 import { TUTORIAL_TARGET_IDS, advanceTutorialAction } from "client/tutorial/tutorial-state";
 
@@ -142,9 +141,10 @@ export function CasePage({ currentCase, setCurrentCase, visible, spinnerState, s
 				return;
 			}
 
-			if (flag === "robux" && result.status === "success") {
-				MarketplaceService.PromptProductPurchaseFinished.Wait();
-			}
+			// Do not use PromptProductPurchaseFinished.Wait() here: that event fires when the
+			// purchase UI closes, which is almost always *before* the server finishes
+			// ProcessReceipt and returns. Wait() only listens for the next fire, so the client
+			// would hang forever on loading after a successful Robux case open.
 
 			isLoadingAtom(false);
 

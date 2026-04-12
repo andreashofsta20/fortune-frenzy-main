@@ -3,8 +3,8 @@ package models
 import "time"
 
 type Item struct {
-	ID            int       `json:"id"`
-	AssetID       int64     `json:"asset_id"`
+	ID            string    `json:"id"`
+	AssetID       string    `json:"asset_id"`
 	Name          string    `json:"name"`
 	Creator       string    `json:"creator"`
 	Description   string    `json:"description"`
@@ -13,7 +13,9 @@ type Item struct {
 	MaximumCopies int64     `json:"maximum_copies"`
 	Value         int64     `json:"value"`
 	CreatedAt     time.Time `json:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
 	Color         string    `json:"color"`
+	Category      string    `json:"category"`
 }
 
 type ItemListing struct {

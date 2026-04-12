@@ -42,7 +42,9 @@ func GetCoinflips(c *fiber.Ctx) error {
 	}
 
 	coinflips := make([]models.CoinflipData, 0)
-	for _, raw := range coinflipsRaw {
+	staleCoinflipIDs := make([]string, 0)
+	for index, raw := range coinflipsRaw {
+		coinflipID := coinflipIDs[index]
 		if rawStr, ok := raw.(string); ok && rawStr != "" {
 			var cf models.CoinflipData
 			if err := json.Unmarshal([]byte(rawStr), &cf); err == nil {
@@ -50,7 +52,20 @@ func GetCoinflips(c *fiber.Ctx) error {
 					coinflips = append(coinflips, cf)
 				}
 			}
+		} else {
+			staleCoinflipIDs = append(staleCoinflipIDs, coinflipID)
 		}
+	}
+
+	if len(staleCoinflipIDs) > 0 {
+		pipe := redis.TxPipeline()
+		for _, staleID := range staleCoinflipIDs {
+			pipe.SRem(c.Context(), "coinflips:global", staleID)
+			if serverID != "" {
+				pipe.SRem(c.Context(), "coinflips:server:"+serverID, staleID)
+			}
+		}
+		_, _ = pipe.Exec(c.Context())
 	}
 
 	return c.JSON(fiber.Map{

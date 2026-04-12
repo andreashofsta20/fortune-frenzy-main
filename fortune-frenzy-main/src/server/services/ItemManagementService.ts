@@ -6,13 +6,15 @@ import { setDecimalPlaces } from "shared/util/number-utils";
 import { MarketplaceItemsDataResponse, Item } from "typings/APIResponses";
 import { ServerScriptService } from "@rbxts/services";
 import getPollingCooldown from "server/util/get-polling-cooldown";
+import { getPlayersOnMenu } from "server/util/player-menu-tracker";
 
 @Service()
 export class ItemManagementService implements OnInit {
-	public UAIDInfo = new Map<string, [string, string, string, string, number]>(); // item_id, user_asset_id, serial_number, copy_id, user_id
+	public UAIDInfo = new Map<string, [string, string, string, string, number]>();
 	public ItemInfo = new Map<string, Item>();
 	private findItemsInRangeLocks = new Set<number>();
 	public Loaded = false;
+	private readonly FALLBACK_POLL_INTERVAL = 12;
 
 	async onInit() {
 		log("warn", "🚀 [ItemManagementService] Initializing...");
@@ -20,12 +22,17 @@ export class ItemManagementService implements OnInit {
 
 		const marketplaceRequest = await new Request("GET", "/marketplace/items", undefined, undefined, {
 			id: ServerScriptService.GetAttribute("server_id") as string,
-		}).GetResponse();
-		const marketplaceResponse = marketplaceRequest.Response as MarketplaceItemsDataResponse;
+		}).GetResponse<MarketplaceItemsDataResponse>();
 
-		marketplaceResponse.data.forEach((item) => {
-			this.ItemInfo.set(item.id, item);
-		});
+		if (marketplaceRequest.Success && marketplaceRequest.Response?.data) {
+			for (const item of marketplaceRequest.Response.data) {
+				this.ItemInfo.set(item.id, item);
+			}
+		} else {
+			warn(
+				`[ItemManagementService] Could not load marketplace catalog (Success=${marketplaceRequest.Success}, Code=${marketplaceRequest.Code})`,
+			);
+		}
 
 		game.GetService("Players").PlayerRemoving.Connect((player: Player) => {
 			this.tidyUp(player.UserId);
@@ -35,8 +42,12 @@ export class ItemManagementService implements OnInit {
 		task.spawn(async () => {
 			// eslint-disable-next-line no-constant-condition
 			while (true) {
-				await this.pollForItemUpdates();
-				task.wait(getPollingCooldown());
+				const hasInterestedMenus =
+					getPlayersOnMenu("Marketplace", "Inventory", "Coinflip", "CaseBattles", "Jackpot").size() > 0;
+				if (hasInterestedMenus) {
+					await this.pollForItemUpdates();
+				}
+				task.wait(hasInterestedMenus ? getPollingCooldown() : this.FALLBACK_POLL_INTERVAL);
 			}
 		});
 
@@ -160,10 +171,12 @@ export class ItemManagementService implements OnInit {
 		});
 
 		const response = await pollRequest.GetResponse<{ status: string; data: Item[] }>();
-		if (!response.Success) return;
+		if (!response.Success || !response.Response?.data) {
+			return;
+		}
 
 		const changedItems = response.Response.data;
-		if (changedItems && changedItems.size() > 0) {
+		if (changedItems.size() > 0) {
 			changedItems.forEach((item) => this.ItemInfo.set(item.id, item));
 			Events.ItemUpdate.broadcast(changedItems);
 		}
