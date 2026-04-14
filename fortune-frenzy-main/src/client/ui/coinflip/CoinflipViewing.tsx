@@ -37,6 +37,7 @@ import { peek } from "@rbxts/charm";
 import { requestServer } from "client/utils/send-function";
 import { LoadingCircle } from "../core/LoadingCircle";
 import { getCoinflipJoinValueRange } from "shared/util/coinflip-join-range";
+import { resolveStakeItemId } from "client/utils/trade-stake-token";
 
 interface Props extends React.PropsWithChildren {
 	CoinflipId: string;
@@ -129,7 +130,7 @@ const UserSection = ({
 };
 
 export const renderItem = (item: string, index: number, px: ScaleFunction, xOffset = 0, name?: string) => {
-	const itemId = item.split(":")[1];
+	const itemId = resolveStakeItemId(item);
 	const itemData = Modding.resolveSingleton(ClientStateController).ItemInfo.get(itemId);
 
 	return (
@@ -137,7 +138,7 @@ export const renderItem = (item: string, index: number, px: ScaleFunction, xOffs
 			<Corner roundness="small" />
 			<SectionStroke />
 			<imagebutton
-				Image={`rbxthumb://type=Asset&id=${itemData?.asset_id}&w=150&h=150`}
+				Image={`rbxthumb://type=Asset&id=${itemData?.asset_id ?? "0"}&w=150&h=150`}
 				ScaleType={Enum.ScaleType.Fit}
 				AnchorPoint={new Vector2(0, 0.5)}
 				BackgroundTransparency={1}
@@ -148,7 +149,7 @@ export const renderItem = (item: string, index: number, px: ScaleFunction, xOffs
 				weight="SemiBold"
 				typeface="Sans"
 				native={{
-					Text: itemData?.name ?? "Error",
+					Text: itemData?.name ?? itemId,
 					TextColor3: palette.primaryText,
 					TextSize: px(17),
 					Position: new UDim2(0, px(55), 0.5, px(-8)),
@@ -421,7 +422,7 @@ export function CoinflipViewing({ CoinflipId, visible, handleCloseButton, childr
 		setCoinflipData(coinflipData);
 		if (coinflipData) {
 			const player1Value = coinflipData.player1_items.reduce((acc, item) => {
-				const itemId = item.split(":")[1];
+				const itemId = resolveStakeItemId(item);
 				const itemData = clientStateController.ItemInfo.get(itemId);
 				return itemData ? acc + itemData.value : acc;
 			}, 0);
@@ -553,7 +554,7 @@ export function CoinflipViewing({ CoinflipId, visible, handleCloseButton, childr
 	const userInformations = useMemo(() => {
 		const calculateTotalValue = (items: string[]) =>
 			items.reduce((acc, item) => {
-				const itemId = item.split(":")[1];
+				const itemId = resolveStakeItemId(item);
 				const itemData = clientStateController.ItemInfo.get(itemId);
 				return itemData ? acc + itemData.value : acc;
 			}, 0);

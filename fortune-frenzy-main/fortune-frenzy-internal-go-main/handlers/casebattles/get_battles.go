@@ -3,6 +3,7 @@ package casebattles
 import (
 	"encoding/json"
 	"ffinternal-go/service"
+	"strings"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -25,14 +26,26 @@ func GetBattles(c *fiber.Ctx) error {
 		}
 	}
 
-	if len(allKeys) == 0 {
+	filteredKeys := make([]string, 0, len(allKeys))
+	for _, k := range allKeys {
+		if !strings.HasPrefix(k, "casebattle:") {
+			continue
+		}
+		id := strings.TrimPrefix(k, "casebattle:")
+		if id == "" || strings.Contains(id, ":") {
+			continue
+		}
+		filteredKeys = append(filteredKeys, k)
+	}
+
+	if len(filteredKeys) == 0 {
 		return c.JSON(fiber.Map{
 			"status":      "OK",
 			"casebattles": []any{},
 		})
 	}
 
-	values, err := redis.MGet(ctx, allKeys...).Result()
+	values, err := redis.MGet(ctx, filteredKeys...).Result()
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to get case battles"})
 	}
@@ -40,6 +53,14 @@ func GetBattles(c *fiber.Ctx) error {
 	battles := make([]json.RawMessage, 0, len(values))
 	for _, val := range values {
 		if rawStr, ok := val.(string); ok && rawStr != "" {
+			var b CaseBattleData
+			if err := json.Unmarshal([]byte(rawStr), &b); err == nil {
+				b = redactCaseBattleForClient(b)
+				if out, err := json.Marshal(b); err == nil {
+					battles = append(battles, json.RawMessage(out))
+					continue
+				}
+			}
 			battles = append(battles, json.RawMessage(rawStr))
 		}
 	}

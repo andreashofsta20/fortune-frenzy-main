@@ -18,6 +18,7 @@ import { Functions } from "client/network";
 import { usePxScale } from "client/hooks/use-scale";
 import { isLoadingAtom } from "client/utils/global-state";
 import { requestServer } from "client/utils/send-function";
+import { resolveStakeItemId } from "client/utils/trade-stake-token";
 
 interface Props {
 	tradeId: number;
@@ -129,7 +130,7 @@ export function TradeInfoArea({ tradeId, setSelectedTradeId }: Props) {
 
 		const getItemValue = (items: string[]) => {
 			return items.reduce((total, item) => {
-				const itemId = item.split(":")[1];
+				const itemId = resolveStakeItemId(item);
 				const itemInfo = clientStateController.ItemInfo.get(itemId);
 				return total + (itemInfo?.value || 0);
 			}, 0);

@@ -150,12 +150,19 @@ export function GAME_LoadingScreen({ messageOverrides, lockCompletion = false }:
 		if (lockCompletion) return;
 
 		const gui = Players.LocalPlayer.WaitForChild("PlayerGui");
-		const conn = gui.ChildAdded.Connect((child) => {
+
+		const onMaybeReady = (child: Instance) => {
 			if (child.IsA("BoolValue") && child.Name === "ClientReady") {
 				setIsLoaded(true);
 			}
-		});
+		};
 
+		// ClientStateController may parent ClientReady before this effect runs (fast load / scheduling).
+		// ChildAdded alone would miss that and leave the screen stuck forever.
+		const existing = gui.FindFirstChild("ClientReady");
+		if (existing) onMaybeReady(existing);
+
+		const conn = gui.ChildAdded.Connect(onMaybeReady);
 		return () => conn.Disconnect();
 	}, [lockCompletion]);
 

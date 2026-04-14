@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -19,11 +20,36 @@ type RolimonsItem struct {
 	Value int64
 }
 
-const rolimonsURL = "https://www.rolimons.com/itemapi/itemdetails"
-const refreshInterval = 5 * time.Minute
+const (
+	rolimonsURL            = "https://www.rolimons.com/itemapi/itemdetails"
+	refreshInterval        = 5 * time.Minute
+	rolimonsMergeBatchSize = 250
+)
+
+// rolimonsInitialDelay waits before the first merge so cold-start joins are not blocked by a long
+// items-table transaction (GET /cases and marketplace catalog read the same rows).
+func rolimonsInitialDelay() time.Duration {
+	s := strings.TrimSpace(os.Getenv("ROLIMONS_INITIAL_DELAY_SEC"))
+	if s == "" {
+		return 8 * time.Second
+	}
+	sec, err := strconv.Atoi(s)
+	if err != nil || sec < 0 {
+		return 8 * time.Second
+	}
+	if sec > 600 {
+		sec = 600
+	}
+	return time.Duration(sec) * time.Second
+}
 
 func StartRolimonsWorker() {
 	go func() {
+		d := rolimonsInitialDelay()
+		if d > 0 {
+			log.Printf("[Rolimons] First merge delayed by %v so API traffic can start without waiting on a large items lock", d)
+			time.Sleep(d)
+		}
 		for {
 			if err := fetchAndMergeRolimons(); err != nil {
 				log.Printf("[Rolimons] Error: %v", err)
@@ -64,30 +90,24 @@ func fetchAndMergeRolimons() error {
 	defer db.Close()
 
 	ctx := context.Background()
-	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("begin tx failed: %w", err)
-	}
-	defer tx.Rollback()
+	const upsertSQL = `INSERT INTO items (id, asset_id, name, value, average_price, category)
+		VALUES (?, ?, ?, ?, 0, 'limited')
+		ON DUPLICATE KEY UPDATE name=VALUES(name), value=VALUES(value), updated_at=NOW()`
 
-	stmt, err := tx.PrepareContext(ctx, `INSERT INTO items (id, asset_id, name, value, average_price, category)
-		VALUES (?, ?, ?, ?, ?, 'limited')
-		ON DUPLICATE KEY UPDATE name=VALUES(name), value=VALUES(value), average_price=VALUES(average_price), updated_at=NOW()`)
-	if err != nil {
-		return fmt.Errorf("prepare failed: %w", err)
+	type mergeRow struct {
+		itemID  string
+		assetID string
+		name    string
+		value   int64
 	}
-	defer stmt.Close()
-
-	count := 0
+	var rows []mergeRow
 	for assetID, row := range result.Items {
 		if len(row) < 4 {
 			continue
 		}
-
 		name, _ := row[0].(string)
 		rap := toInt64(row[2])
 		value := toInt64(row[3])
-
 		resolvedValue := value
 		if resolvedValue <= 0 {
 			resolvedValue = rap
@@ -95,23 +115,43 @@ func fetchAndMergeRolimons() error {
 		if resolvedValue <= 0 {
 			continue
 		}
-
-		avgPrice := rap
-		if avgPrice <= 0 {
-			avgPrice = value
-		}
-
-		itemID := "limited_" + assetID
-		_, err := stmt.Exec(itemID, assetID, name, resolvedValue, avgPrice)
-		if err != nil {
-			log.Printf("[Rolimons] Failed to upsert %s: %v", assetID, err)
-			continue
-		}
-		count++
+		rows = append(rows, mergeRow{
+			itemID:  "limited_" + assetID,
+			assetID: assetID,
+			name:    name,
+			value:   resolvedValue,
+		})
 	}
 
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit failed: %w", err)
+	count := 0
+	for start := 0; start < len(rows); start += rolimonsMergeBatchSize {
+		end := start + rolimonsMergeBatchSize
+		if end > len(rows) {
+			end = len(rows)
+		}
+		batch := rows[start:end]
+
+		tx, err := db.BeginTx(ctx, nil)
+		if err != nil {
+			return fmt.Errorf("begin tx failed: %w", err)
+		}
+		stmt, err := tx.PrepareContext(ctx, upsertSQL)
+		if err != nil {
+			_ = tx.Rollback()
+			return fmt.Errorf("prepare failed: %w", err)
+		}
+		for _, r := range batch {
+			_, err := stmt.Exec(r.itemID, r.assetID, r.name, r.value)
+			if err != nil {
+				log.Printf("[Rolimons] Failed to upsert %s: %v", r.assetID, err)
+				continue
+			}
+			count++
+		}
+		_ = stmt.Close()
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("commit failed (batch %d-%d): %w", start, end, err)
+		}
 	}
 
 	log.Printf("[Rolimons] Merged %d items into catalog", count)

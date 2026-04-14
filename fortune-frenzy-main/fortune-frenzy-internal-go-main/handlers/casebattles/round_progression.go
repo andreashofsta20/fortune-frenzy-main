@@ -4,9 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"ffinternal-go/service"
-	"fmt"
 	"log"
-	"sort"
+	"strconv"
 	"time"
 )
 
@@ -66,137 +65,82 @@ func StartRoundProgression(battleID string) {
 			continue
 		}
 
-		raw, err = redis.Get(ctx, redisKey).Result()
-		if err != nil {
-			redis.Del(ctx, lockKey)
-			return
-		}
-		if err := json.Unmarshal([]byte(raw), &battle); err != nil {
-			redis.Del(ctx, lockKey)
-			return
-		}
-		if battle.Status != "in_progress" {
-			redis.Del(ctx, lockKey)
-			if battle.Status == "completed" {
+		shouldStop := false
+		func() {
+			defer func() { _ = redis.Del(ctx, lockKey) }()
+
+			raw, err := redis.Get(ctx, redisKey).Result()
+			if err != nil {
 				return
 			}
-			continue
-		}
+			if err := json.Unmarshal([]byte(raw), &battle); err != nil {
+				return
+			}
+			if battle.Status != "in_progress" {
+				if battle.Status == "completed" {
+					shouldStop = true
+				}
+				return
+			}
 
-		totalRounds := len(battle.Cases)
-		currentIndex := battle.SpinData.CurrentCaseIndex
-		nextIndex := currentIndex + 1
+			if battle.ResolvedPulls == nil || len(battle.ResolvedPulls) == 0 {
+				log.Printf("[CaseBattle] Battle %s missing resolved_pulls; stopping progression", battleID)
+				shouldStop = true
+				return
+			}
 
-		if nextIndex >= totalRounds {
-			finalizeBattle(ctx, battleID)
-			redis.Del(ctx, lockKey)
+			n := len(battle.Cases)
+			cur := battle.SpinData.CurrentCaseIndex
+			nextIdx := cur + 1
+
+			if nextIdx < n {
+				battle.PlayerPulls = visiblePullsFromResolved(battle.ResolvedPulls, nextIdx)
+				battle.SpinData.CurrentCaseIndex = nextIdx
+				battle.SpinData.CaseID = battle.Cases[nextIdx]
+				battle.SpinData.Progress = strconv.Itoa(nextIdx + 1)
+				step := getStepDuration(battle.FastMode)
+				ns := time.Now().UnixMilli() + step
+				battle.NextStepAt = &ns
+				battle.UpdatedAt = time.Now().UnixMilli()
+			} else {
+				battle.PlayerPulls = completionPlayerPulls(battle.ResolvedPulls)
+				if len(battle.ResolvedWinners) > 0 {
+					battle.WinnersInfo = append([]WinnerInfo(nil), battle.ResolvedWinners...)
+				} else {
+					battle.WinnersInfo = []WinnerInfo{}
+				}
+				battle.ResolvedPulls = nil
+				battle.ResolvedWinners = nil
+				battle.Status = "completed"
+				battle.NextStepAt = nil
+				nowMs := time.Now().UnixMilli()
+				battle.CompletedAt = nowMs
+				battle.UpdatedAt = nowMs
+				shouldStop = true
+				log.Printf("[CaseBattle] Battle %s completed with winner(s): %v", battleID, winnersStr(battle.WinnersInfo))
+			}
+
+			data, err := json.Marshal(battle)
+			if err != nil {
+				log.Printf("[CaseBattle] Marshal battle %s for round advance: %v", battleID, err)
+				return
+			}
+			ttl := 2 * time.Hour
+			if battle.Status == "completed" {
+				ttl = 3 * time.Minute
+			}
+			if err := redis.Set(ctx, redisKey, string(data), ttl).Err(); err != nil {
+				log.Printf("[CaseBattle] Redis set battle %s round advance: %v", battleID, err)
+			} else if battle.Status == "completed" {
+				w := append([]WinnerInfo(nil), battle.WinnersInfo...)
+				go settleCaseBattleWinners(context.Background(), battleID, w)
+			}
+		}()
+
+		if shouldStop {
 			return
 		}
-
-		stepDuration := getStepDuration(battle.FastMode)
-		nextStepAt := time.Now().UnixMilli() + stepDuration
-
-		battle.SpinData.CurrentCaseIndex = nextIndex
-		battle.SpinData.CaseID = battle.Cases[nextIndex]
-		battle.SpinData.Progress = fmt.Sprintf("%d/%d", nextIndex+1, totalRounds)
-		battle.NextStepAt = &nextStepAt
-		battle.UpdatedAt = time.Now().UnixMilli()
-
-		data, err := json.Marshal(battle)
-		if err != nil {
-			redis.Del(ctx, lockKey)
-			return
-		}
-		redis.Set(ctx, redisKey, string(data), 2*time.Hour)
-		redis.Del(ctx, lockKey)
 	}
-}
-
-func finalizeBattle(ctx context.Context, battleID string) {
-	redis := service.GetRedisConnection()
-	redisKey := "casebattle:" + battleID
-
-	raw, err := redis.Get(ctx, redisKey).Result()
-	if err != nil {
-		return
-	}
-
-	var battle CaseBattleData
-	if err := json.Unmarshal([]byte(raw), &battle); err != nil {
-		return
-	}
-
-	type playerScore struct {
-		id    string
-		value float64
-		team  int
-	}
-
-	var scores []playerScore
-	for _, player := range battle.Players {
-		pull, ok := battle.PlayerPulls[player.ID]
-		if !ok {
-			scores = append(scores, playerScore{id: player.ID, value: 0, team: getTeam(battle.TeamMode, player.Position)})
-			continue
-		}
-		scores = append(scores, playerScore{id: player.ID, value: pull.TotalValue, team: getTeam(battle.TeamMode, player.Position)})
-	}
-
-	if battle.TeamMode == "2v2" {
-		teamTotals := make(map[int]float64)
-		for _, s := range scores {
-			teamTotals[s.team] += s.value
-		}
-		winningTeam := 1
-		if battle.Crazy {
-			if teamTotals[2] < teamTotals[1] {
-				winningTeam = 2
-			}
-		} else {
-			if teamTotals[2] > teamTotals[1] {
-				winningTeam = 2
-			}
-		}
-
-		totalPot := teamTotals[1] + teamTotals[2]
-		var winners []WinnerInfo
-		winnersCount := 0
-		for _, s := range scores {
-			if s.team == winningTeam {
-				winnersCount++
-			}
-		}
-		share := totalPot / float64(winnersCount)
-		for _, s := range scores {
-			if s.team == winningTeam {
-				winners = append(winners, WinnerInfo{PlayerID: s.id, AmountWon: share})
-			}
-		}
-		battle.WinnersInfo = winners
-	} else {
-		if battle.Crazy {
-			sort.Slice(scores, func(i, j int) bool { return scores[i].value < scores[j].value })
-		} else {
-			sort.Slice(scores, func(i, j int) bool { return scores[i].value > scores[j].value })
-		}
-
-		totalPot := 0.0
-		for _, s := range scores {
-			totalPot += s.value
-		}
-
-		battle.WinnersInfo = []WinnerInfo{{PlayerID: scores[0].id, AmountWon: totalPot}}
-	}
-
-	now := time.Now().UnixMilli()
-	battle.Status = "completed"
-	battle.CompletedAt = now
-	battle.UpdatedAt = now
-
-	data, _ := json.Marshal(battle)
-	redis.Set(ctx, redisKey, string(data), 60*time.Second)
-
-	log.Printf("[CaseBattle] Battle %s completed with winner(s): %v", battleID, winnersStr(battle.WinnersInfo))
 }
 
 func winnersStr(winners []WinnerInfo) string {
@@ -208,16 +152,4 @@ func winnersStr(winners []WinnerInfo) string {
 		ids += w.PlayerID
 	}
 	return ids
-}
-
-func getTeam(teamMode string, position int) int {
-	switch teamMode {
-	case "2v2":
-		if position <= 2 {
-			return 1
-		}
-		return 2
-	default:
-		return position
-	}
 }

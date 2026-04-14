@@ -9,18 +9,37 @@ import getServerType from "shared/util/get-server-type";
 import log from "shared/util/log";
 import { ServerReceiver } from "@flamework/networking/out/functions/types";
 import getPollingCooldown from "server/util/get-polling-cooldown";
-import { getPlayersOnMenu } from "server/util/player-menu-tracker";
 
-/** Packeter / HTTP backend base URL (change per environment). */
-const PACKETER_BACKEND_URL = "https://api.fortunefrenzy.xyz";
+/** Default API base when ReplicatedStorage `_backend_url` is unset. */
+const PACKETER_BACKEND_URL_DEFAULT = "https://api.fortunefrenzy.xyz";
+
+function resolvePacketerBackendUrl(): string {
+	const attr = ReplicatedStorage.GetAttribute("_backend_url");
+	if (typeIs(attr, "string") && attr.size() > 0) {
+		if (string.lower(attr) === "local") {
+			warn(
+				`[InitializationService] _backend_url "local" is no longer supported (in-game mock backend removed). Using ${PACKETER_BACKEND_URL_DEFAULT}.`,
+			);
+			return PACKETER_BACKEND_URL_DEFAULT;
+		}
+		return attr;
+	}
+	return PACKETER_BACKEND_URL_DEFAULT;
+}
 const SETTINGS_REFRESH_INTERVAL = 30;
 const LEADERBOARD_REFRESH_INTERVAL = 15;
 const NETWORK_LOG_FLUSH_INTERVAL = 5;
+/** Slower than minigame polls so cash_changes DB work does not compete as often with case battles / jackpots. */
+const CASH_CHANGES_POLL_INTERVAL = 8;
+/** How often to pull Mongo wallet cash for online players (offline admin / marketplace credits without rejoin). */
+const MONGO_WALLET_SYNC_INTERVAL = 15;
 
 interface SettingsGetResponse {
 	status: string;
 	result: Record<string, unknown> & {
 		polling_cooldown?: number;
+		/** Seconds between Packeter HttpService batches (optional; default 0.1 in code). */
+		packeter_min_interval?: number;
 		game_open?: boolean;
 		paycheck?: number;
 		dailywheel?: unknown;
@@ -57,7 +76,7 @@ export class InitializationService implements OnInit, OnStart {
 		log("warn", "🚀 [InitializationService] Initializing...");
 		const start_time = tick();
 
-		new Packeter(PACKETER_BACKEND_URL);
+		new Packeter(resolvePacketerBackendUrl());
 		ReplicatedStorage.SetAttribute("ServerType", getServerType());
 
 		log("print", `✅ [InitializationService] Initialized in ${setDecimalPlaces(tick() - start_time)}ms`);
@@ -89,7 +108,7 @@ export class InitializationService implements OnInit, OnStart {
 			});
 		};
 
-		startLoop("global", async () => {
+		startLoop(CASH_CHANGES_POLL_INTERVAL, async () => {
 			const playersLoaded = Players.GetPlayers().filter((p) => p.GetAttribute("__SERVER_LOADED") === true);
 			const allUserIds = playersLoaded.map((p) => p.UserId).join(",");
 			if (allUserIds === "") return;
@@ -107,8 +126,16 @@ export class InitializationService implements OnInit, OnStart {
 				if (!player) continue;
 				const profile = await this.PlayerManagementService.getOnlineProfile(player);
 				if (!profile) continue;
-				this.PlayerManagementService.addCash(player, tonumber(change.amount) ?? 0);
+				await this.PlayerManagementService.addCash(player, tonumber(change.amount) ?? 0);
 			}
+		});
+
+		startLoop(MONGO_WALLET_SYNC_INTERVAL, async () => {
+			const playersLoaded = Players.GetPlayers().filter((p) => p.GetAttribute("__SERVER_LOADED") === true);
+			if (playersLoaded.size() === 0) return;
+			await Promise.all(
+				playersLoaded.map((player) => this.PlayerManagementService.applyAuthoritativeWalletFromMongo(player)),
+			);
 		});
 
 		startLoop(NETWORK_LOG_FLUSH_INTERVAL, async () => {
@@ -125,19 +152,12 @@ export class InitializationService implements OnInit, OnStart {
 			}
 		});
 
-		startLoop(LEADERBOARD_REFRESH_INTERVAL, async () => {
-			if (getPlayersOnMenu("Leaderboards").size() === 0) return;
-			const request = await new Request("GET", "/leaderboard").GetResponse<LeaderboardHttpResponse>();
-			if (!request.Success || !request.Response?.leaderboards) return;
+		task.spawn(() => {
+			this.refreshLeaderboardsAttribute();
+		});
 
-			try {
-				ReplicatedStorage.SetAttribute(
-					"Leaderboards",
-					HttpService.JSONEncode(request.Response.leaderboards),
-				);
-			} catch (e) {
-				warn("❌ Leaderboard encode failed:", e);
-			}
+		startLoop(LEADERBOARD_REFRESH_INTERVAL, async () => {
+			await this.refreshLeaderboardsAttribute();
 		});
 
 		startLoop(SETTINGS_REFRESH_INTERVAL, async () => {
@@ -216,6 +236,20 @@ export class InitializationService implements OnInit, OnStart {
 		}
 	}
 
+	private async refreshLeaderboardsAttribute(): Promise<void> {
+		const request = await new Request("GET", "/leaderboard").GetResponse<LeaderboardHttpResponse>();
+		if (!request.Success || !request.Response?.leaderboards) return;
+
+		try {
+			ReplicatedStorage.SetAttribute(
+				"Leaderboards",
+				HttpService.JSONEncode(request.Response.leaderboards),
+			);
+		} catch (e) {
+			warn("❌ Leaderboard encode failed:", e);
+		}
+	}
+
 	private async fetchAndApplyGameSettings(): Promise<void> {
 		const request = await new Request("GET", "/settings").GetResponse<SettingsGetResponse>();
 
@@ -242,6 +276,11 @@ export class InitializationService implements OnInit, OnStart {
 		const polling = settings.polling_cooldown;
 		if (typeIs(polling, "number")) {
 			ServerScriptService.SetAttribute("gamesettings_polling_cooldown", polling);
+		}
+
+		const packeterInterval = settings.packeter_min_interval;
+		if (typeIs(packeterInterval, "number")) {
+			Request.currentInstance?.setMinRequestInterval(packeterInterval);
 		}
 	}
 }

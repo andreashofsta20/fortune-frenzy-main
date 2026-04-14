@@ -159,7 +159,10 @@ export const useJackpotWheel = () => {
 		const members = currentJackpot.members;
 		let totalValue = 0;
 		for (const m of members) totalValue += m.total_value;
-		if (totalValue === 0) return { slices: slicesResult, playerSliceInfo: [] };
+		// If every stake is 0 (stale data / decode issue), still build slices so member rows and wheel don't break.
+		const stakeDenominator = totalValue > 0 ? totalValue : members.size();
+		const stakeFor = (m: (typeof members)[number]) => (totalValue > 0 ? m.total_value : 1);
+		if (stakeDenominator === 0) return { slices: slicesResult, playerSliceInfo: [] };
 
 		const sortedMembers = [...members].sort((a, b) => a.player.id < b.player.id);
 		const usedColourIndices = new Set<number>();
@@ -196,7 +199,7 @@ export const useJackpotWheel = () => {
 
 		for (const member of sortedMembers) {
 			order += 1;
-			const angle = prev + (member.total_value / totalValue) * math.pi * 2;
+			const angle = prev + (stakeFor(member) / stakeDenominator) * math.pi * 2;
 
 			const startDeg = math.deg(prev);
 			const endDeg = math.deg(angle);

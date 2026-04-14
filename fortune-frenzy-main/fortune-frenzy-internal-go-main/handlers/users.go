@@ -17,3 +17,6 @@ func RemoveCash(c *fiber.Ctx) error      { return users.RemoveCash(c) }
 func GetUserActive(c *fiber.Ctx) error   { return users.GetUserActive(c) }
 func RemoveItems(c *fiber.Ctx) error     { return users.RemoveItems(c) }
 func WipeProfile(c *fiber.Ctx) error     { return users.WipeProfile(c) }
+func BootstrapWallet(c *fiber.Ctx) error { return users.BootstrapWallet(c) }
+func GetWallet(c *fiber.Ctx) error       { return users.GetWallet(c) }
+func AdjustWallet(c *fiber.Ctx) error   { return users.AdjustWallet(c) }

@@ -122,11 +122,13 @@ export function ItemTooltip({ position, selectedItem, tooltipRef, setHoveringToo
 
 	const itemData = useMemo(() => {
 		if (selectedItem === "") return undefined;
-		const copies = clientStateController.Inventory.get(selectedItem);
+		const ownedList = clientStateController.Inventory.get(selectedItem);
 		const data = clientStateController.ItemInfo.get(selectedItem);
-		const quantity = copies ? copies.size() : 0;
+		const quantity = ownedList ? ownedList.size() : 0;
 		const rarity = getRarity(data ? data.value : 0);
-		const exists = data?.total_unboxed;
+		const copiesInCirculation = data?.copies_in_circulation ?? 0;
+		const unboxed = data?.total_unboxed ?? 0;
+		const exists = math.max(copiesInCirculation, unboxed);
 
 		return {
 			quantity,
@@ -238,7 +240,7 @@ export function ItemTooltip({ position, selectedItem, tooltipRef, setHoveringToo
 					typeface="Sans"
 					weight="SemiBold"
 					native={{
-						Text: `${itemData?.exists} Exist`,
+						Text: `${itemData?.exists} Exist Globally`,
 						AutomaticSize: Enum.AutomaticSize.XY,
 						TextSize: px(SIZES.textSize.value),
 						Size: new UDim2(0, px(100), 0, px(14)),

@@ -3,34 +3,11 @@ package cases
 import (
 	"encoding/json"
 	"ffinternal-go/service"
+	"log"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 )
-
-type CaseItem struct {
-	ID      string  `json:"id"`
-	Chance  float64 `json:"chance"`
-	Claimed int64   `json:"claimed"`
-}
-
-type CaseUIData struct {
-	Primary string `json:"primary"`
-	Colour  string `json:"colour"`
-}
-
-type CaseData struct {
-	ID               string     `json:"id"`
-	Price            int64      `json:"price"`
-	Items            []CaseItem `json:"items"`
-	NextRotation     string     `json:"next_rotation"`
-	UIData           CaseUIData `json:"ui_data"`
-	OpenedCount      int64      `json:"opened_count"`
-	MinValue         int64      `json:"min_value"`
-	MaxValue         int64      `json:"max_value"`
-	AvailableForGems bool       `json:"available_for_gems"`
-	DevProduct       string     `json:"dev_product"`
-}
 
 func GetCases(c *fiber.Ctx) error {
 	db, err := service.GetMariaDBConnection()
@@ -45,17 +22,20 @@ func GetCases(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to query cases"})
 	}
-	defer rows.Close()
 
+	// Read the full result set before calling EnrichCaseItems (which runs more queries on the same
+	// *sql.Conn). MySQL does not allow an interleaved second query while this Rows is open; the
+	// driver would block forever (see /casebattles/cases which only runs one statement per conn).
 	cases := make([]CaseData, 0)
 	for rows.Next() {
 		var cd CaseData
 		var itemsJSON string
 		var nextRotation *time.Time
 		var uiPrimary, uiColour string
+		var _storedPrice int64
 
 		err := rows.Scan(
-			&cd.ID, &cd.Price, &itemsJSON, &nextRotation,
+			&cd.ID, &_storedPrice, &itemsJSON, &nextRotation,
 			&uiPrimary, &uiColour, &cd.OpenedCount,
 			&cd.MinValue, &cd.MaxValue, &cd.AvailableForGems, &cd.DevProduct,
 		)
@@ -70,12 +50,32 @@ func GetCases(c *fiber.Ctx) error {
 		if nextRotation != nil {
 			cd.NextRotation = nextRotation.Format(time.RFC3339)
 		} else {
-			now := time.Now()
-			tomorrow := time.Date(now.Year(), now.Month(), now.Day()+1, 6, 0, 0, 0, time.UTC)
-			cd.NextRotation = tomorrow.Format(time.RFC3339)
+			cd.NextRotation = nextRotationFallback(time.Now()).Format(time.RFC3339)
 		}
 		cd.UIData = CaseUIData{Primary: uiPrimary, Colour: uiColour}
 		cases = append(cases, cd)
+	}
+	if err = rows.Err(); err != nil {
+		_ = rows.Close()
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to read cases"})
+	}
+	if err := rows.Close(); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to read cases"})
+	}
+
+	for i := range cases {
+		cd := &cases[i]
+		if len(cd.Items) == 0 {
+			continue
+		}
+		p, mn, mx, perr := EnrichCaseItems(c.Context(), db, cd.Items)
+		if perr != nil {
+			log.Printf("[GetCases] enrich case %s: %v", cd.ID, perr)
+		} else {
+			cd.Price = p
+			cd.MinValue = mn
+			cd.MaxValue = mx
+		}
 	}
 
 	return c.JSON(fiber.Map{

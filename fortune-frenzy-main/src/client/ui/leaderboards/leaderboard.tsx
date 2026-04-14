@@ -7,6 +7,7 @@ import { Corner } from "../tools/Corner";
 import countries from "shared/util/countries";
 import { formatWithSuffix } from "shared/util/number-utils";
 import { capitalizeFirstChar } from "shared/util/string-utils";
+import { COINFLIP_HOUSE_USER_ID } from "shared/util/coinflip-house";
 import { changeMenu } from "client/utils/menu-utils";
 import { currentSelectedPlayerAtom, newTradeStateAtom } from "client/utils/global-state";
 import buttonClick from "client/utils/ui-effects/button-click";
@@ -196,13 +197,21 @@ export function Leaderboard({ lb }: Props) {
 
 		const payload = decodedPayload as Partial<LeaderboardsPayload>;
 		const leaderboardEntries = payload[lb];
-		const sortedUsers = (typeIs(leaderboardEntries, "table") ? [...leaderboardEntries] : []).sort((a, b) => {
-			const aValue = tonumber(a[3]) ?? 0;
-			const bValue = tonumber(b[3]) ?? 0;
+		const sortedUsers = (typeIs(leaderboardEntries, "table") ? [...leaderboardEntries] : [])
+			.filter((row) => {
+				const uid = tostring(row[0] ?? "");
+				const disp = tostring(row[2] ?? "");
+				if (uid === COINFLIP_HOUSE_USER_ID) return false;
+				if (string.find(disp, "Coinflip House")[0] !== undefined) return false;
+				return true;
+			})
+			.sort((a, b) => {
+				const aValue = tonumber(a[3]) ?? 0;
+				const bValue = tonumber(b[3]) ?? 0;
 
-			if (aValue === bValue) return (a[2] ?? "") > (b[2] ?? "");
-			return bValue < aValue;
-		});
+				if (aValue === bValue) return (a[2] ?? "") > (b[2] ?? "");
+				return bValue < aValue;
+			});
 
 		setUsers(sortedUsers);
 		setIsRefreshing(false);

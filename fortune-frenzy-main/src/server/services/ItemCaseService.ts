@@ -5,37 +5,9 @@ import { Case, CasesResponse, OpenCaseResponse } from "typings/APIResponses";
 import { ItemManagementService } from "./ItemManagementService";
 import { PlayerManagementService } from "./PlayerManagementService";
 import { Events } from "server/network";
-import { GameAnalyticsServer } from "@rbxts/gameanalytics-sdk";
 import log from "shared/util/log";
 import { CommerceService } from "./CommerceService";
-import { HttpService, MarketplaceService } from "@rbxts/services";
-
-declare const fetch: (url: string, init: defined) => Promise<unknown>;
-
-function emitAgentDebugLog(location: string, message: string, data: Record<string, unknown>, hypothesisId: string) {
-	// #region agent log
-	task.spawn(() => {
-		pcall(() =>
-			fetch("http://127.0.0.1:7528/ingest/1b6715ac-5dbe-4e21-b0fb-3326720d79ad", {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-					"X-Debug-Session-Id": "4ef876",
-				},
-				body: HttpService.JSONEncode({
-					sessionId: "4ef876",
-					location,
-					message,
-					data,
-					timestamp: DateTime.now().UnixTimestampMillis,
-					runId: "pre-fix",
-					hypothesisId,
-				}),
-			}),
-		);
-	});
-	// #endregion
-}
+import { MarketplaceService } from "@rbxts/services";
 
 @Service()
 export class ItemCaseService implements OnStart {
@@ -101,18 +73,6 @@ export class ItemCaseService implements OnStart {
 
 	async refreshCases() {
 		const cases_response = await new Request("GET", "/cases").GetResponse<CasesResponse>();
-		// #region agent log
-		emitAgentDebugLog(
-			"src/server/services/ItemCaseService.ts:102",
-			"cases refresh response",
-			{
-				code: cases_response.Code,
-				success: cases_response.Success,
-				hasDataArray: typeIs(cases_response.Response?.data, "table"),
-			},
-			"H4",
-		);
-		// #endregion
 
 		if (!cases_response.Success || !cases_response.Response?.data) {
 			log(
@@ -195,7 +155,7 @@ export class ItemCaseService implements OnStart {
 
 			let polling = true;
 			let confirmed = false;
-			const maxWaitSec = 180;
+			const maxWaitSec = 170;
 			let waited = 0;
 			while (polling && waited < maxWaitSec) {
 				task.wait(1);
@@ -291,18 +251,6 @@ export class ItemCaseService implements OnStart {
 			}).GetResponse();
 
 			const response = request.Response as OpenCaseResponse;
-			// #region agent log
-			emitAgentDebugLog(
-				"src/server/services/ItemCaseService.ts:286",
-				"open case response",
-				{
-					code: request.Code,
-					success: request.Success,
-					hasResult: response?.result !== undefined,
-				},
-				"H4",
-			);
-			// #endregion
 
 			if (!request.Success || !response || !response.result) {
 				log("warn", `[ItemCaseService] openCase failed: player=${player.UserId}, case_id=${case_id}, code=${request.Code}, error=${response?.error}`);

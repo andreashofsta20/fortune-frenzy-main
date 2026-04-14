@@ -1,7 +1,9 @@
 package users
 
 import (
+	"database/sql"
 	"ffinternal-go/service"
+	"ffinternal-go/utilities"
 	"strconv"
 
 	"github.com/gofiber/fiber/v2"
@@ -34,24 +36,27 @@ func SearchUsers(c *fiber.Ctx) error {
 		orderClause = "name ASC"
 	}
 
-	if keywords == "" {
-		return c.JSON(fiber.Map{
-			"status":  "OK",
-			"results": []fiber.Map{},
-		})
-	}
-
 	conn, err := service.GetMariaDBConnection()
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to connect to the database"})
 	}
 	defer conn.Close()
 
-	pattern := "%" + keywords + "%"
-	rows, err := conn.QueryContext(c.Context(),
-		"SELECT user_id, name, display_name, current_cash, current_value FROM users WHERE name LIKE ? OR display_name LIKE ? ORDER BY "+orderClause+" LIMIT ?",
-		pattern, pattern, limit,
-	)
+	houseID := utilities.CoinflipHouseUserID()
+	var rows *sql.Rows
+	if keywords == "" {
+		// Browse mode: show top users from DB (no search text required).
+		rows, err = conn.QueryContext(c.Context(),
+			"SELECT user_id, name, display_name, current_cash, current_value FROM users WHERE user_id != ? ORDER BY "+orderClause+" LIMIT ?",
+			houseID, limit,
+		)
+	} else {
+		pattern := "%" + keywords + "%"
+		rows, err = conn.QueryContext(c.Context(),
+			"SELECT user_id, name, display_name, current_cash, current_value FROM users WHERE user_id != ? AND (name LIKE ? OR display_name LIKE ?) ORDER BY "+orderClause+" LIMIT ?",
+			houseID, pattern, pattern, limit,
+		)
+	}
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to search users"})
 	}

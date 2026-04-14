@@ -21,6 +21,7 @@ import {
 import { palette } from "client/utils/palette";
 import { requestServer } from "client/utils/send-function";
 import { getCoinflipJoinValueRange } from "shared/util/coinflip-join-range";
+import { resolveStakeItemId } from "client/utils/trade-stake-token";
 
 // Custom hook to manage coinflip state transitions
 const useCoinflipMenuLogic = (flashMenu: () => void) => {
@@ -31,7 +32,7 @@ const useCoinflipMenuLogic = (flashMenu: () => void) => {
 
 	const calculateTotalValue = useCallback((items: string[]) => {
 		return items.reduce((acc, item) => {
-			const itemId = item.split(":")[1];
+			const itemId = resolveStakeItemId(item);
 			const itemData = clientStateController.ItemInfo.get(itemId);
 			return itemData ? acc + itemData.value : acc;
 		}, 0);
@@ -53,6 +54,8 @@ const useCoinflipMenuLogic = (flashMenu: () => void) => {
 				title: COINFLIP_SELECTION_TITLE,
 				buttonText: "Next",
 				autoSelectButtonVisible: false,
+				autoSelectButtonMode: "random",
+				excludeListedCopies: true,
 			});
 		} else if (coinflipState === "default" || coinflipState === "viewing") {
 			selectionDataAtom(undefined);
@@ -70,6 +73,8 @@ const useCoinflipMenuLogic = (flashMenu: () => void) => {
 					minimumValue,
 					title: COINFLIP_SELECTION_TITLE,
 					autoSelectButtonVisible: true,
+					autoSelectButtonMode: "random",
+					excludeListedCopies: true,
 				});
 			}
 		}
@@ -180,6 +185,9 @@ export const CoinflipMenu = React.memo(({ visible, flashMenu }: Props) => {
 			currentSelection: inventorySelection,
 			setCurrentSelection: inventorySelectionAtom,
 			autoSelectButtonVisible: selectionData?.autoSelectButtonVisible,
+			autoSelectButtonMode: selectionData?.autoSelectButtonMode,
+			autoSelectButtonText: selectionData?.autoSelectButtonText,
+			excludeListedCopies: selectionData?.excludeListedCopies !== false,
 			confirmButtonEvent,
 		};
 	}, [selectionData, inventorySelection, confirmButtonEvent]);

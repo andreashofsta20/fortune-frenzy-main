@@ -2,13 +2,12 @@ import { Service, OnStart } from "@flamework/core";
 import log from "shared/util/log";
 import { setDecimalPlaces } from "shared/util/number-utils";
 import { PlayerManagementService } from "./PlayerManagementService";
-import { MemoryStoreService, Players } from "@rbxts/services";
+import { Players } from "@rbxts/services";
 import { Request } from "server/util/packeter";
 import { Events } from "server/network";
 import getPollingCooldown from "server/util/get-polling-cooldown";
 import { getPlayersOnMenu } from "server/util/player-menu-tracker";
 
-const CURRENT_MINIGAMES = ["Coinflip", "ItemCases"];
 const MINIGAME_STATS_FALLBACK_INTERVAL = 12;
 
 @Service()
@@ -34,7 +33,8 @@ export class MinigameService implements OnStart {
 		task.spawn(async () => {
 			// eslint-disable-next-line no-constant-condition
 			while (true) {
-				const hasInterestedMenus = getPlayersOnMenu("Minigames", "Coinflip", "ItemCases").size() > 0;
+				const hasInterestedMenus =
+					getPlayersOnMenu("Minigames", "Coinflip", "ItemCases", "Jackpot", "CaseBattles").size() > 0;
 				if (hasInterestedMenus) {
 					await this.UpdateGlobalMinigameStats();
 

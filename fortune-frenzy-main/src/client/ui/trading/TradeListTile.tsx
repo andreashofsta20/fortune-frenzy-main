@@ -11,6 +11,7 @@ import { timeUntil } from "shared/util/string-utils";
 import { Modding } from "@flamework/core";
 import { ClientStateController } from "client/controllers/ClientStateController";
 import { setInterval } from "@rbxts/set-timeout";
+import { resolveStakeItemId } from "client/utils/trade-stake-token";
 
 interface Props {
 	trade: Trade;
@@ -49,7 +50,7 @@ export function TradeListTile({ trade, layoutOrder, selectedTrade, setSelectedTr
 	const arrowData = useMemo(() => {
 		const getItemValue = (items: string[]) =>
 			items.reduce((total, item) => {
-				const itemId = item.split(":")[1];
+				const itemId = resolveStakeItemId(item);
 				const itemInfo = clientStateController.ItemInfo.get(itemId);
 				return total + (itemInfo ? itemInfo.value : 0);
 			}, 0);

@@ -128,6 +128,7 @@ export function CaseSelectorPage({ visible, currentCase, setCurrentCase }: Props
 				}}
 			/>
 			<CloseButton
+				showUpscaleButton={false}
 				native={{ Size: new UDim2(0, px(21), 0, px(21)), Position: new UDim2(0, px(855), 0, px(24)) }}
 				event={{
 					Activated: () => changeMenu("Minigames"),

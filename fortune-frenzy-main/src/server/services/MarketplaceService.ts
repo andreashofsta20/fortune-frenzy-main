@@ -13,6 +13,7 @@ import { Events } from "server/network";
 import { Request } from "server/util/packeter";
 import { addCommasToNumber, setDecimalPlaces } from "shared/util/number-utils";
 import log from "shared/util/log";
+import { isItemDirectShopPurchaseBlocked } from "shared/util/is-item-direct-shop-blocked";
 import getPollingCooldown from "server/util/get-polling-cooldown";
 import { getPlayersOnMenu } from "server/util/player-menu-tracker";
 
@@ -187,17 +188,15 @@ export class MarketplaceService implements OnStart {
 		}
 
 		const listingPrice = price !== undefined ? math.floor(price) : 0;
+		const listRequestBody =
+			price !== undefined ? { price: listingPrice } : ({} as { price?: number });
 
-		let request = await new Request("POST", `/marketplace/copies/${uaid}/list`, undefined, {
-			price: price,
-		}).GetResponse();
+		let request = await new Request("POST", `/marketplace/copies/${uaid}/list`, undefined, listRequestBody).GetResponse();
 		let response = request.Response as ItemListingResponse;
 
 		if (!request.Success && request.Code === 404 && price !== undefined) {
 			await this.PlayerManagementService.refreshInventory(player);
-			request = await new Request("POST", `/marketplace/copies/${uaid}/list`, undefined, {
-				price: price,
-			}).GetResponse();
+			request = await new Request("POST", `/marketplace/copies/${uaid}/list`, undefined, listRequestBody).GetResponse();
 			response = request.Response as ItemListingResponse;
 		}
 
@@ -207,9 +206,12 @@ export class MarketplaceService implements OnStart {
 				`[MarketplaceService] Listing request failed for UAID ${uaid}. Player: ${player.UserId}. Code: ${request.Code}, Error: ${response.error}`,
 			);
 
-			if (request.Code === 404) {
-				task.spawn(() => {
-					this.updateListingsCache(this.ItemManagementService.getItemIdFromUAID(uaid));
+			if (request.Code === 404 || request.Code === 400) {
+				task.spawn(async () => {
+					await this.PlayerManagementService.refreshInventory(player);
+					const itemId = this.ItemManagementService.getItemIdFromUAID(uaid);
+					if (itemId) await this.updateListingsCache(itemId);
+					else await this.updateListingsCache();
 				});
 			}
 
@@ -256,6 +258,17 @@ export class MarketplaceService implements OnStart {
 	async getAllListings(): Promise<Map<string, ItemListing[]>> {
 		await this.updateListingsCache();
 		return this.ItemListings;
+	}
+
+	/** UAIDs the seller currently has listed (any item) — exclude from stakes / trade selection. */
+	getListedUserAssetIdsForSeller(sellerId: string): Set<string> {
+		const s = new Set<string>();
+		for (const [, listings] of this.ItemListings) {
+			for (const l of listings) {
+				if (tostring(l.seller_id) === tostring(sellerId)) s.add(l.user_asset_id);
+			}
+		}
+		return s;
 	}
 
 	private purchaseListingPlayerStatuses = new Map<Player, string>();
@@ -320,6 +333,16 @@ export class MarketplaceService implements OnStart {
 
 		const itemInfo = this.ItemManagementService.ItemInfo.get(itemId);
 		if (!itemInfo) return this.clearStatusAndRespond(this.purchaseListingPlayerStatuses, player, "error", 404);
+
+		if (isItemDirectShopPurchaseBlocked(itemInfo)) {
+			return this.clearStatusAndRespond(
+				this.purchaseListingPlayerStatuses,
+				player,
+				"error",
+				403,
+				"This item is not sold in the shop. Get it from cases or trading.",
+			);
+		}
 
 		const directPurchasePrice = this.getDirectPurchasePrice(itemId);
 		if (directPurchasePrice === undefined)

@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useMemo, useState } from "@rbxts/react";
+import React, { memo, useMemo, useState } from "@rbxts/react";
 import { usePx } from "client/hooks/use-px";
 import { palette } from "client/utils/palette";
 import { ClientStateController } from "client/controllers/ClientStateController";
@@ -13,8 +13,6 @@ import { StackedItemCard } from "./StackedItemCard";
 import { useCaseBattleSelection } from "client/hooks/use-case-battle-selection";
 import { BattlePlayer } from "./BattlePlayer";
 import { addCommasToNumber } from "shared/util/number-utils";
-import { Players } from "@rbxts/services";
-
 interface Props {
 	visible: boolean;
 	flashMenu: () => void;
@@ -47,7 +45,8 @@ export const BattleViewing = memo(({ visible, flashMenu, setCurrentPage }: Props
 		viewingData?.items.filter((pull) => {
 			if (!currentBattleData) return true;
 			if (currentBattleData.status !== "in_progress") return true;
-			return pull.case_index !== currentBattleData.current_spin_data.current_case_index;
+			// Only show pulls for rounds that have fully finished (not current or future cases).
+			return pull.case_index < currentBattleData.current_spin_data.current_case_index;
 		}),
 		(pull) => {
 			if (!currentBattleData) return `${pull.id}-${pull.case_index}`;
@@ -81,9 +80,8 @@ export const BattleViewing = memo(({ visible, flashMenu, setCurrentPage }: Props
 		if (currentBattleData.status === "in_progress") {
 			const currentCase = currentBattleData.current_spin_data.case_id;
 			const caseData = clientStateController.CaseBattleCases.find((c) => c.id === currentCase);
-			const currentRound = currentBattleData.current_spin_data.progress;
-			const totalRounds = math.max(1, currentBattleData.cases.size());
-			const roundLabel = `Round ${currentRound}/${totalRounds}`;
+			// progress is already "1/N" from the API — do not append /N again.
+			const roundLabel = `Round ${currentBattleData.current_spin_data.progress}`;
 			if (!caseData) return `${roundLabel}: Opening case...`;
 			return `${roundLabel}: Opening ${caseData.name}...`;
 		}

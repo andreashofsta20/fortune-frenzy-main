@@ -21,27 +21,11 @@ import (
 	"github.com/joho/godotenv"
 )
 
-func emitAgentDebugLog(location, message, hypothesisID string, data map[string]any) {
-	// #region agent log
-	payload := map[string]any{
-		"sessionId":    "4ef876",
-		"location":     location,
-		"message":      message,
-		"data":         data,
-		"timestamp":    time.Now().UnixMilli(),
-		"runId":        "pre-fix",
-		"hypothesisId": hypothesisID,
-	}
-	if b, err := json.Marshal(payload); err == nil {
-		_ = os.WriteFile("/Users/52hofand/Downloads/Fortune-frenzy/.cursor/debug-4ef876.log", append(b, '\n'), 0644)
-	}
-	// #endregion
-}
-
 func main() {
 	_ = godotenv.Load()
 
 	service.InitMariaDB()
+	service.InitMongoDB()
 	service.InitRedis()
 	app := fiber.New()
 
@@ -54,12 +38,6 @@ func main() {
 	app.Post("/register/:serverId", func(c *fiber.Ctx) error {
 		serverID := c.Params("serverId")
 		apiKey := c.Get("x-api-key")
-		// #region agent log
-		emitAgentDebugLog("fortune-frenzy-internal-go-main/main.go:55", "register endpoint hit", "H1", map[string]any{
-			"serverIDPresent": serverID != "",
-			"apiKeyPresent":   apiKey != "",
-		})
-		// #endregion
 		if serverID == "" || apiKey == "" {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Missing server ID or API key"})
 		}
@@ -85,12 +63,6 @@ func main() {
 		if err := c.BodyParser(&body); err != nil {
 			return c.Status(400).JSON(fiber.Map{"error": "Invalid packet"})
 		}
-		// #region agent log
-		emitAgentDebugLog("fortune-frenzy-internal-go-main/main.go:83", "packet endpoint hit", "H3", map[string]any{
-			"serverIDPresent": serverID != "",
-			"packetSize":      len(body.Packet),
-		})
-		// #endregion
 
 		type packetResponse struct {
 			RequestID string `json:"request_id"`
@@ -140,12 +112,6 @@ func main() {
 				utilities.DiscordLogError("PacketSubRequest", fmt.Sprintf("%s %s returned %d", req.Method, req.Route, resp.StatusCode), map[string]string{"body": preview})
 			}
 		}
-		// #region agent log
-		emitAgentDebugLog("fortune-frenzy-internal-go-main/main.go:148", "packet endpoint completed", "H3", map[string]any{
-			"serverID":   serverID,
-			"routesHead": routes,
-		})
-		// #endregion
 
 		utilities.DiscordLogPacketBatch(serverID, len(body.Packet), time.Since(batchStart), routes)
 

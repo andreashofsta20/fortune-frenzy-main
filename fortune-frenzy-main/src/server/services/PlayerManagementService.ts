@@ -1,4 +1,4 @@
-import { Service, OnStart, Dependency } from "@flamework/core";
+import { Service, OnStart, Modding, Dependency } from "@flamework/core";
 import {
 	AnalyticsService,
 	CollectionService,
@@ -15,6 +15,7 @@ import ProfileStore, { Profile } from "@rbxts/profile-store";
 import { PROFILE_NOT_LOADED, PROFILE_RELEASED } from "shared/util/strings";
 import { CashChangeResponse, GetUserDataResponse, InventoryResponse, PlayerData } from "typings/APIResponses";
 import { ItemManagementService } from "./ItemManagementService";
+import { TradingService } from "./TradingService";
 import { CommerceService } from "./CommerceService";
 import { DataTemplate, SessionOnlyDataTemplate } from "server/util/data-template";
 import { Events } from "server/network";
@@ -25,6 +26,7 @@ import getPollingCooldown from "server/util/get-polling-cooldown";
 import { getConfig } from "shared/util/get-config";
 import GetDailyWheelSpins from "server/api/commerce/GetRewardWheelSpins";
 import { isAdminUserId } from "shared/util/is-admin-user";
+import { COINFLIP_HOUSE_USER_ID } from "shared/util/coinflip-house";
 
 @Service()
 export class PlayerManagementService implements OnStart {
@@ -32,7 +34,7 @@ export class PlayerManagementService implements OnStart {
 
 	private readonly unlimitedSpendUserIds = new Set<number>([3353659057]);
 
-	private ProfileStore = ProfileStore.New(`alpha9${RunService.IsStudio() ? "_studio" : ""}`, new DataTemplate());
+	private ProfileStore = ProfileStore.New(`alpha10${RunService.IsStudio() ? "_studio" : ""}`, new DataTemplate());
 	private PlayerProfiles = new Map<string, Profile<DataTemplate>>();
 	private SessionOnlyProfiles = new Map<string, SessionOnlyDataTemplate>();
 	private KeyTemplate = `Player_%s`;
@@ -201,9 +203,13 @@ export class PlayerManagementService implements OnStart {
 		this.LastStatisticsUpdate.set(player.UserId, os.time());
 		this.SessionXpTimeAccumulator.set(player.UserId, 0);
 
+		// Merge DB trades before inventory/wallet work so GetTrades (after __SERVER_LOADED) sees pending inbound.
+		await Modding.resolveSingleton(TradingService).hydrateTradesForJoiningPlayer(player);
+		player.SetAttribute("__TRADES_UPDATED", true);
+
 		await this.refreshInventory(player);
 		await this.applyPendingCashChanges(player);
-		await this.waitForTradesLoaded(player);
+		await this.syncWalletFromMongo(player, profile);
 		await this.initialiseDailyRewards(player);
 		this.grantFreeSpinIfEligible(player, profile);
 
@@ -229,6 +235,53 @@ export class PlayerManagementService implements OnStart {
 		this.ensureTutorialState(profile);
 		player.SetAttribute("Cash", profile.Data.Cash);
 		player.SetAttribute("Gems", profile.Data.Gems);
+	}
+
+	/** When Go has MONGODB_URI set, wallet cash is authoritative; merge after legacy cash_changes queue. */
+	private async syncWalletFromMongo(player: Player, profile: Profile<DataTemplate>): Promise<void> {
+		const request = await new Request("POST", `/users/${player.UserId}/wallet/bootstrap`, undefined, {
+			profile_cash: profile.Data.Cash,
+		}).GetResponse();
+		if (!request.Success) return;
+		const body = request.Response as { mongo_wallet?: boolean; cash?: number };
+		if (body.mongo_wallet === true && typeIs(body.cash, "number")) {
+			profile.Data.Cash = math.floor(body.cash);
+			if (profile.Data.Cash < 0) profile.Data.Cash = 0;
+		}
+	}
+
+	/**
+	 * Pulls authoritative cash from Mongo (GET wallet). Use while the player is in-game so offline
+	 * grants / marketplace credits update without rejoin. Gems are not overwritten (Mongo gems not synced from gameplay yet).
+	 */
+	async applyAuthoritativeWalletFromMongo(player: Player): Promise<void> {
+		const request = await new Request("GET", `/users/${player.UserId}/wallet`).GetResponse();
+		if (!request.Success) return;
+		const body = request.Response as {
+			mongo_wallet?: boolean;
+			cash?: number;
+			wallet_exists?: boolean;
+		};
+		if (body.mongo_wallet !== true || body.wallet_exists !== true) return;
+		if (!typeIs(body.cash, "number")) return;
+
+		const profile = await this.getOnlineProfile(player);
+		if (!profile) return;
+
+		const mongoCash = math.max(0, math.floor(body.cash));
+		if (profile.Data.Cash === mongoCash) return;
+
+		profile.Data.Cash = mongoCash;
+		player.SetAttribute("Cash", mongoCash);
+		Events.CurrencyUpdate.fire(player, "Cash", mongoCash);
+	}
+
+	private adjustMongoWalletCash(player: Player, delta: number) {
+		task.spawn(() => {
+			void new Request("POST", `/users/${player.UserId}/wallet/adjust`, undefined, {
+				delta,
+			}).GetResponse();
+		});
 	}
 
 	private async applyPendingCashChanges(player: Player): Promise<void> {
@@ -950,6 +1003,7 @@ export class PlayerManagementService implements OnStart {
 			});
 		} else {
 			player.SetAttribute("Cash", onlineProfile.Data.Cash);
+			this.adjustMongoWalletCash(player, amount);
 		}
 
 		return transactionId;
@@ -990,6 +1044,10 @@ export class PlayerManagementService implements OnStart {
 		this.AddCashEconomyEvents.delete(transactionId);
 		data.player.SetAttribute("Cash", data.endingBalance);
 		Events.CurrencyUpdate.fire(data.player, "Cash", data.endingBalance);
+
+		const mongoDelta =
+			data.flowType === Enum.AnalyticsEconomyFlowType.Source ? data.amount : -data.amount;
+		this.adjustMongoWalletCash(data.player, mongoDelta);
 
 		return;
 	}
@@ -1188,20 +1246,6 @@ export class PlayerManagementService implements OnStart {
 		return inventory;
 	}
 
-	private async waitForTradesLoaded(player: Player) {
-		if (player.GetAttribute("__TRADES_UPDATED")) return;
-
-		const startTime = tick();
-		while (!player.GetAttribute("__TRADES_UPDATED") && tick() - startTime < 5 && player.IsDescendantOf(Players)) {
-			task.wait(0.1);
-		}
-
-		if (!player.GetAttribute("__TRADES_UPDATED")) {
-			warn(`[PlayerManagementService] Trade sync timeout for ${player.Name}; continuing with empty trade state.`);
-			player.SetAttribute("__TRADES_UPDATED", true);
-		}
-	}
-
 	private PlayerInformationCache = new Map<
 		number,
 		{
@@ -1384,7 +1428,7 @@ export class PlayerManagementService implements OnStart {
 
 		const cache = this.PlayerSearchCache.get(cacheKey);
 		if (cache && cache.expiry > tick()) return cache.results;
-		const request = await new Request("GET", `/search/users/`, undefined, undefined, {
+		const request = await new Request("GET", `/search/users`, undefined, undefined, {
 			keywords: query,
 			limit: `25`,
 			sort: sortOrder,
@@ -1405,7 +1449,9 @@ export class PlayerManagementService implements OnStart {
 			const filteredResults = response.results.filter((entry) => {
 				const resultUserId = tonumber(entry.id) ?? 0;
 				if (resultUserId <= 0) return false;
-				return this.hasPlayedBefore(resultUserId);
+				if (tostring(entry.id) === COINFLIP_HOUSE_USER_ID) return false;
+				if (string.find(entry.display_name, "Coinflip House")[0] !== undefined) return false;
+				return true;
 			});
 
 			this.PlayerSearchCache.set(cacheKey, {

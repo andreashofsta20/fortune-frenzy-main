@@ -40,29 +40,70 @@ func StartCoinflip(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Coinflip cannot be started"})
 	}
 
+	player1ID := ""
+	if coinflip.Player1.ID != nil {
+		player1ID = *coinflip.Player1.ID
+	}
+	player2ID := ""
+	if coinflip.Player2.ID != nil {
+		player2ID = *coinflip.Player2.ID
+	}
+	if player1ID == "" || player2ID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Coinflip has invalid player ids"})
+	}
+
+	p1UA := utilities.MapItemsToIDs(coinflip.Player1Items)
+	p2UA := utilities.MapItemsToIDs(coinflip.Player2Items)
+	unlockStakes := func() {
+		utilities.UnlockItemStakes(c.Context(), redis, append(append([]string{}, p1UA...), p2UA...))
+	}
+	// Avoid leaving Redis on awaiting_confirmation if start errors mid-flight (clients would see a stuck "finalizing" state).
+	writeCoinflipFailed := func() {
+		coinflip.Status = "failed"
+		b, mErr := json.Marshal(coinflip)
+		if mErr == nil {
+			_ = redis.Set(c.Context(), "coinflip:"+coinflipID, string(b), 30*time.Second).Err()
+		}
+		unlockStakes()
+	}
+
+	// Human vs human: player2 owns their items. Vs bot: minted mirror copies are owned by the house account.
+	p2TransferOwnerID := player2ID
+	if strings.HasPrefix(player2ID, "BOT_") {
+		p2TransferOwnerID = utilities.CoinflipHouseUserID()
+	}
+
 	transferResp, err := utilities.InternalRequest(c, "POST", "/items/item-transfer", []map[string]interface{}{
 		{
-			"user_id": coinflip.Player1.ID,
+			"user_id": player1ID,
 			"items":   utilities.MapItemsToIDs(coinflip.Player1Items),
 		},
 		{
-			"user_id": coinflip.Player2.ID,
+			"user_id": p2TransferOwnerID,
 			"items":   utilities.MapItemsToIDs(coinflip.Player2Items),
 		},
 	})
 	if err != nil || transferResp.StatusCode() != fiber.StatusOK {
-		log.Printf("[CoinflipStart] transfer failed coinflip=%s err=%v status=%v", coinflipID, err, func() int {
+		bodyPreview := ""
+		if transferResp != nil {
+			bodyPreview = string(transferResp.Body())
+			if len(bodyPreview) > 400 {
+				bodyPreview = bodyPreview[:400] + "..."
+			}
+		}
+		log.Printf("[CoinflipStart] transfer failed coinflip=%s err=%v status=%v body=%s", coinflipID, err, func() int {
 			if transferResp == nil {
 				return 0
 			}
 			return transferResp.StatusCode()
-		}())
-		utilities.DiscordLogInternalError("CoinflipStartTransfer", coinflipID, fmt.Sprintf("transfer failed err=%v status=%v", err, func() int {
+		}(), bodyPreview)
+		utilities.DiscordLogInternalError("CoinflipStartTransfer", coinflipID, fmt.Sprintf("transfer failed err=%v status=%v body=%s", err, func() int {
 			if transferResp == nil {
 				return 0
 			}
 			return transferResp.StatusCode()
-		}()))
+		}(), bodyPreview))
+		unlockStakes()
 		coinflip.Status = "failed"
 		data, _ := json.Marshal(coinflip)
 		redis.Set(c.Context(), "coinflip:"+coinflipID, string(data), 5*time.Second)
@@ -73,6 +114,7 @@ func StartCoinflip(c *fiber.Ctx) error {
 	if err != nil {
 		log.Printf("[CoinflipStart] player1 value failed coinflip=%s items=%v err=%v", coinflipID, coinflip.Player1Items, err)
 		utilities.DiscordLogInternalError("CoinflipStartValue1", coinflipID, fmt.Sprintf("player1 value failed: %v", err))
+		writeCoinflipFailed()
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Internal Server Error"})
 	}
 
@@ -80,6 +122,7 @@ func StartCoinflip(c *fiber.Ctx) error {
 	if err != nil {
 		log.Printf("[CoinflipStart] player2 value failed coinflip=%s items=%v err=%v", coinflipID, coinflip.Player2Items, err)
 		utilities.DiscordLogInternalError("CoinflipStartValue2", coinflipID, fmt.Sprintf("player2 value failed: %v", err))
+		writeCoinflipFailed()
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Internal Server Error"})
 	}
 
@@ -91,6 +134,7 @@ func StartCoinflip(c *fiber.Ctx) error {
 	if err != nil {
 		log.Printf("[CoinflipStart] secure flip failed coinflip=%s p1=%d p2=%d err=%v", coinflipID, player1Value, player2Value, err)
 		utilities.DiscordLogInternalError("CoinflipStartFlip", coinflipID, fmt.Sprintf("secure flip failed: %v", err))
+		writeCoinflipFailed()
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Internal Server Error"})
 	}
 
@@ -114,6 +158,7 @@ func StartCoinflip(c *fiber.Ctx) error {
 	if err := json.Unmarshal(transferResp.Body(), &transferBody); err != nil {
 		log.Printf("[CoinflipStart] transfer body parse failed coinflip=%s body=%s err=%v", coinflipID, string(transferResp.Body()), err)
 		utilities.DiscordLogInternalError("CoinflipStartTransferBody", coinflipID, fmt.Sprintf("transfer body parse failed: %v", err))
+		writeCoinflipFailed()
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Internal Server Error"})
 	}
 	coinflip.TransferID = transferBody.TransferID
@@ -135,6 +180,7 @@ func StartCoinflip(c *fiber.Ctx) error {
 	if err != nil {
 		log.Printf("[CoinflipStart] insert past coinflip failed coinflip=%s p1=%v p2=%v transfer=%s err=%v", coinflipID, coinflip.Player1.ID, coinflip.Player2.ID, coinflip.TransferID, err)
 		utilities.DiscordLogInternalError("CoinflipStartInsert", coinflipID, fmt.Sprintf("insert failed: %v", err))
+		writeCoinflipFailed()
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Internal Server Error"})
 	}
 
@@ -143,6 +189,7 @@ func StartCoinflip(c *fiber.Ctx) error {
 	if err != nil {
 		log.Printf("[CoinflipStart] fetch auto_id failed coinflip=%s err=%v", coinflipID, err)
 		utilities.DiscordLogInternalError("CoinflipStartAutoID", coinflipID, fmt.Sprintf("fetch auto_id failed: %v", err))
+		writeCoinflipFailed()
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Internal Server Error"})
 	}
 	coinflip.AutoID = autoID
@@ -151,6 +198,7 @@ func StartCoinflip(c *fiber.Ctx) error {
 	if err != nil {
 		log.Printf("[CoinflipStart] marshal final coinflip failed coinflip=%s err=%v", coinflipID, err)
 		utilities.DiscordLogInternalError("CoinflipStartMarshal", coinflipID, fmt.Sprintf("marshal failed: %v", err))
+		writeCoinflipFailed()
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Internal Server Error"})
 	}
 
@@ -161,6 +209,7 @@ func StartCoinflip(c *fiber.Ctx) error {
 	if _, err = pipe.Exec(c.Context()); err != nil {
 		log.Printf("[CoinflipStart] redis finalize failed coinflip=%s err=%v", coinflipID, err)
 		utilities.DiscordLogInternalError("CoinflipStartRedis", coinflipID, fmt.Sprintf("redis finalize failed: %v", err))
+		writeCoinflipFailed()
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Internal Server Error"})
 	}
 
@@ -170,13 +219,38 @@ func StartCoinflip(c *fiber.Ctx) error {
 		confirmUserID = *coinflip.Player1.ID
 	} else {
 		confirmUserID = *coinflip.Player2.ID
+		if strings.HasPrefix(confirmUserID, "BOT_") {
+			confirmUserID = utilities.CoinflipHouseUserID()
+		}
 	}
-	forwardHeaders := utilities.CopyRequestHeaders(c)
-	go func() {
-		_, _ = utilities.InternalRequestForwarded("POST", "/items/item-transfer/"+transferID+"/confirm", map[string]interface{}{
+	if confirmUserID != "" {
+		confirmResp, cerr := utilities.InternalRequest(c, "POST", "/items/item-transfer/"+transferID+"/confirm", map[string]interface{}{
 			"user_id": confirmUserID,
-		}, forwardHeaders)
-	}()
+		})
+		if cerr != nil || confirmResp == nil || confirmResp.StatusCode() != fiber.StatusOK {
+			body := ""
+			if confirmResp != nil {
+				body = string(confirmResp.Body())
+				if len(body) > 300 {
+					body = body[:300] + "..."
+				}
+			}
+			log.Printf("[CoinflipStart] confirm failed coinflip=%s err=%v status=%v body=%s", coinflipID, cerr, func() int {
+				if confirmResp == nil {
+					return 0
+				}
+				return confirmResp.StatusCode()
+			}(), body)
+			utilities.DiscordLogInternalError("CoinflipStartConfirm", coinflipID, fmt.Sprintf("confirm failed: %v body=%s", cerr, body))
+			coinflip.Status = "failed"
+			b, _ := json.Marshal(coinflip)
+			_ = redis.Set(c.Context(), "coinflip:"+coinflipID, string(b), 30*time.Second).Err()
+			unlockStakes()
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to confirm item transfer"})
+		}
+	}
+
+	unlockStakes()
 
 	return c.JSON(fiber.Map{
 		"status": "OK",

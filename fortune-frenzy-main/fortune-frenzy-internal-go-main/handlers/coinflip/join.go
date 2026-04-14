@@ -1,7 +1,6 @@
 package coinflip
 
 import (
-	"context"
 	"encoding/json"
 	"ffinternal-go/models"
 	"ffinternal-go/service"
@@ -46,8 +45,9 @@ func JoinCoinflip(c *fiber.Ctx) error {
 	if userIDStr == "" || len(body.Items) == 0 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request"})
 	}
-	for _, item := range body.Items {
-		if !strings.HasPrefix(item, "FF") {
+	stakeUA := utilities.MapItemsToIDs(body.Items)
+	for _, u := range stakeUA {
+		if !strings.HasPrefix(u, "FF") {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request"})
 		}
 	}
@@ -102,8 +102,8 @@ func JoinCoinflip(c *fiber.Ctx) error {
 
 	rows, err := db.QueryContext(c.Context(),
 		"SELECT user_asset_id FROM item_copies WHERE user_asset_id IN (?"+
-			strings.Repeat(",?", len(body.Items)-1)+") AND owner_id = ?",
-		append(utilities.ToInterfaceSlice(body.Items), userIDStr)...,
+			strings.Repeat(",?", len(stakeUA)-1)+") AND owner_id = ?",
+		append(utilities.ToInterfaceSlice(stakeUA), userIDStr)...,
 	)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to verify items"})
@@ -118,16 +118,29 @@ func JoinCoinflip(c *fiber.Ctx) error {
 		}
 		confirmedItems[item] = true
 	}
-	if len(confirmedItems) != len(body.Items) {
+	if len(confirmedItems) != len(stakeUA) {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid items"})
+	}
+
+	listed, err := utilities.AnyItemsListed(c.Context(), db, stakeUA)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	if listed {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "An item is listed on the marketplace"})
+	}
+	if err := utilities.LockItemStakes(c.Context(), redis, stakeUA, "coinflip:"+coinflipID, int64(coinflipTTL/time.Second)); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Item already in use"})
 	}
 
 	player2Info, err := utilities.GetUserInfo(c.Context(), db, []string{userIDStr})
 	if err != nil {
+		utilities.UnlockItemStakes(c.Context(), redis, stakeUA)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to get user info"})
 	}
-	player2Items, err := utilities.GetItemString(c.Context(), db, body.Items)
+	player2Items, err := utilities.GetItemString(c.Context(), db, stakeUA)
 	if err != nil {
+		utilities.UnlockItemStakes(c.Context(), redis, stakeUA)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to get item string"})
 	}
 
@@ -137,6 +150,7 @@ func JoinCoinflip(c *fiber.Ctx) error {
 
 	data, err := json.Marshal(coinflip)
 	if err != nil {
+		utilities.UnlockItemStakes(c.Context(), redis, stakeUA)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to join coinflip"})
 	}
 
@@ -144,38 +158,73 @@ func JoinCoinflip(c *fiber.Ctx) error {
 	pipe.Set(c.Context(), "coinflip:"+coinflipID, string(data), coinflipTTL)
 	pipe.Set(c.Context(), lockKey, "active", coinflipTTL)
 	if _, err = pipe.Exec(c.Context()); err != nil {
+		utilities.UnlockItemStakes(c.Context(), redis, stakeUA)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to join coinflip"})
 	}
 	keepUserLock = true
 
+	p1StakeUA := utilities.MapItemsToIDs(coinflip.Player1Items)
+	p2StakeUA := utilities.MapItemsToIDs(coinflip.Player2Items)
 	forwardHeaders := utilities.CopyRequestHeaders(c)
-	go func() {
-		time.Sleep(1500 * time.Millisecond)
 
-		resp, err := utilities.InternalRequestForwarded("POST", "/coinflip/start/"+coinflipID, fiber.Map{
-			"coinflip_id": coinflipID,
-		}, forwardHeaders)
+	// Run start in this request (was async). Returning awaiting_confirmation left clients on
+	// "global sync" until the next poll; if the internal HTTP start failed or lagged, the flip looked stuck forever.
+	time.Sleep(100 * time.Millisecond)
 
-		if err != nil || resp == nil || resp.StatusCode() != fiber.StatusOK {
-			statusCode := 0
-			if resp != nil {
-				statusCode = resp.StatusCode()
-			}
-			errMsg := "nil"
-			if err != nil {
-				errMsg = err.Error()
-			}
-			log.Printf("[Coinflip] Internal start request failed for %s: err=%s statusCode=%d", coinflipID, errMsg, statusCode)
-			utilities.DiscordLogInternalError("CoinflipStart", coinflipID, fmt.Sprintf("Internal /coinflip/start failed: err=%s statusCode=%d", errMsg, statusCode))
+	resp, startErr := utilities.InternalRequestForwarded("POST", "/coinflip/start/"+coinflipID, fiber.Map{
+		"coinflip_id": coinflipID,
+	}, forwardHeaders)
 
-			coinflip.Status = "failed"
-			data, _ := json.Marshal(coinflip)
-			_ = redis.Set(context.Background(), "coinflip:"+coinflipID, string(data), 10*time.Second).Err()
+	if startErr != nil || resp == nil || resp.StatusCode() != fiber.StatusOK {
+		statusCode := 0
+		if resp != nil {
+			statusCode = resp.StatusCode()
 		}
-	}()
+		errMsg := "nil"
+		if startErr != nil {
+			errMsg = startErr.Error()
+		}
+		log.Printf("[Coinflip] Internal start request failed for %s: err=%s statusCode=%d", coinflipID, errMsg, statusCode)
+		utilities.DiscordLogInternalError("CoinflipStart", coinflipID, fmt.Sprintf("Internal /coinflip/start failed: err=%s statusCode=%d", errMsg, statusCode))
+
+		coinflip.Status = "failed"
+		failData, _ := json.Marshal(coinflip)
+		_ = redis.Set(c.Context(), "coinflip:"+coinflipID, string(failData), 10*time.Second).Err()
+		all := append(append([]string{}, p1StakeUA...), p2StakeUA...)
+		utilities.UnlockItemStakes(c.Context(), redis, all)
+		_, _ = redis.Del(c.Context(), lockKey).Result()
+		keepUserLock = false
+
+		apiMsg := "Coinflip could not be finalized"
+		if resp != nil && len(resp.Body()) > 0 {
+			var errBody struct {
+				Error string `json:"error"`
+			}
+			if json.Unmarshal(resp.Body(), &errBody) == nil && errBody.Error != "" {
+				apiMsg = errBody.Error
+			}
+		}
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": apiMsg})
+	}
+
+	var startResp struct {
+		Status string              `json:"status"`
+		Data   models.CoinflipData `json:"data"`
+	}
+	if err := json.Unmarshal(resp.Body(), &startResp); err != nil || startResp.Status != "OK" {
+		log.Printf("[Coinflip] Internal start bad body for %s: err=%v", coinflipID, err)
+		coinflip.Status = "failed"
+		failData, _ := json.Marshal(coinflip)
+		_ = redis.Set(c.Context(), "coinflip:"+coinflipID, string(failData), 10*time.Second).Err()
+		all := append(append([]string{}, p1StakeUA...), p2StakeUA...)
+		utilities.UnlockItemStakes(c.Context(), redis, all)
+		_, _ = redis.Del(c.Context(), lockKey).Result()
+		keepUserLock = false
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Coinflip could not be finalized"})
+	}
 
 	return c.JSON(fiber.Map{
 		"status": "OK",
-		"data":   coinflip,
+		"data":   startResp.Data,
 	})
 }

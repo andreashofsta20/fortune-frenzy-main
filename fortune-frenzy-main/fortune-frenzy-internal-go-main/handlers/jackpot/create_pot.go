@@ -62,10 +62,18 @@ type JackpotData struct {
 	TransferID     string          `json:"transfer_id,omitempty"`
 	IsSystemPot    bool            `json:"is_system_pot,omitempty"`
 	AutoStartAt    int64           `json:"auto_start_at,omitempty"`
+	CompletedAt    int64           `json:"completed_at,omitempty"`
 }
 
 type WinningData struct {
 	Player PlayerInfo `json:"player"`
+}
+
+// ensureJackpotMembers avoids JSON "members": null (nil slice) which Roblox decodes as nil and breaks iteration.
+func ensureJackpotMembers(j *JackpotData) {
+	if j.Members == nil {
+		j.Members = []JackpotMember{}
+	}
 }
 
 func parseCreatorID(raw interface{}) string {

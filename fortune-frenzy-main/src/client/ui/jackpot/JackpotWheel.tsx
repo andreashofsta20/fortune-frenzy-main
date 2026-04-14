@@ -110,6 +110,7 @@ export function JackpotWheel({ jackpot, slices, playerSliceInfo, setCurrentPage 
 								autoSelectButtonVisible: true,
 								autoSelectButtonText: "Add Max",
 								autoSelectButtonMode: "max",
+								excludeListedCopies: true,
 							});
 						},
 					}}

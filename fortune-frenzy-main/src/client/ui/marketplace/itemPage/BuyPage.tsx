@@ -6,6 +6,7 @@ import { MARKETPLACE_INITIAL_BUY_BUTTON } from "shared/util/strings";
 import { addCommasToNumber } from "shared/util/number-utils";
 import { replacePlaceholder } from "shared/util/string-utils";
 import { Item, ItemListing } from "typings/APIResponses";
+import { isItemDirectShopPurchaseBlocked } from "shared/util/is-item-direct-shop-blocked";
 import { ItemPageReseller } from "./Reseller";
 
 interface Props {
@@ -62,6 +63,26 @@ export function BuyPage({
 						Text: "Direct buy is unavailable for this item.",
 						TextColor3: palette.midText,
 						TextSize: px(20),
+					}}
+				/>
+			</frame>
+		);
+	}
+
+	if (isItemDirectShopPurchaseBlocked(itemData)) {
+		return (
+			<frame BackgroundTransparency={1} Size={new UDim2(1, 0, 1, 0)} Position={position}>
+				<TextLabel
+					weight="SemiBold"
+					typeface="Sans"
+					native={{
+						Position: new UDim2(0.5, 0, 0.5, 0),
+						AnchorPoint: new Vector2(0.5, 0.5),
+						Size: new UDim2(0, px(420), 0, px(60)),
+						Text: "This item is not sold in the shop. Get it from cases or trading.",
+						TextColor3: palette.midText,
+						TextSize: px(18),
+						TextWrapped: true,
 					}}
 				/>
 			</frame>

@@ -50,6 +50,7 @@ function JackpotMenuComponent({ visible, flashMenu }: Props) {
 			currentSelection: inventorySelection,
 			setCurrentSelection: inventorySelectionAtom,
 			autoSelectButtonVisible: jackpotSelectionData?.autoSelectButtonVisible,
+			excludeListedCopies: jackpotSelectionData?.excludeListedCopies !== false,
 			confirmButtonEvent: async () => {
 				if (!currentJackpotId.current) return;
 				isLoadingAtom(true);

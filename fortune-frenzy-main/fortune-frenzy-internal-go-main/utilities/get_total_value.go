@@ -7,44 +7,67 @@ import (
 	"strings"
 )
 
-func GetTotalValue(ctx context.Context, db *sql.Conn, uaids []string) (int64, error) {
-	if len(uaids) == 0 {
+const copyValueByUAID = `SELECT i.value FROM item_copies ic INNER JOIN items i ON ic.item_id = i.id WHERE ic.user_asset_id = ? LIMIT 1`
+
+// stakeTokenValue resolves one stake line to an item value.
+// - Jackpot / transfers: token is raw item_copies.user_asset_id (no colon).
+// - Coinflips: utilities.GetItemString stores tokens as user_asset_id:item_id; only the
+//   prefix exists in item_copies, so we look up by prefix, then fall back to items.id.
+func stakeTokenValue(ctx context.Context, db *sql.Conn, token string) (int64, error) {
+	if token == "" {
+		return 0, fmt.Errorf("empty user_asset_id")
+	}
+	var v int64
+	err := db.QueryRowContext(ctx, copyValueByUAID, token).Scan(&v)
+	if err == nil {
+		return v, nil
+	}
+	if err != sql.ErrNoRows {
+		return 0, fmt.Errorf("lookup item copy: %w", err)
+	}
+
+	parts := strings.SplitN(token, ":", 2)
+	if len(parts) != 2 {
+		return 0, fmt.Errorf("unknown user_asset_id: %s", token)
+	}
+	prefix, itemID := parts[0], parts[1]
+
+	err = db.QueryRowContext(ctx, copyValueByUAID, prefix).Scan(&v)
+	if err == nil {
+		return v, nil
+	}
+	if err != sql.ErrNoRows {
+		return 0, fmt.Errorf("lookup item copy by prefix: %w", err)
+	}
+
+	err = db.QueryRowContext(ctx, `SELECT value FROM items WHERE id = ? LIMIT 1`, itemID).Scan(&v)
+	if err == nil {
+		return v, nil
+	}
+	if err == sql.ErrNoRows {
+		return 0, fmt.Errorf("unknown user_asset_id: %s", token)
+	}
+	return 0, fmt.Errorf("lookup item definition: %w", err)
+}
+
+// GetTotalValue sums item values for stake tokens (raw UAIDs and/or uaid:item_id as used in coinflip Redis).
+func GetTotalValue(ctx context.Context, db *sql.Conn, tokens []string) (int64, error) {
+	if len(tokens) == 0 {
 		return 0, nil
 	}
 
-	itemIDs := make([]string, len(uaids))
-	for i, uaid := range uaids {
-		parts := strings.Split(uaid, ":")
-		if len(parts) != 2 {
-			return 0, fmt.Errorf("invalid user asset ID format: %s", uaid)
+	var total int64
+	seen := make(map[string]struct{}, len(tokens))
+	for _, t := range tokens {
+		if _, dup := seen[t]; dup {
+			return 0, fmt.Errorf("duplicate user_asset_id: %s", t)
 		}
-		itemIDs[i] = parts[1]
-	}
-
-	query := "SELECT value FROM items WHERE id IN (?" + strings.Repeat(",?", len(itemIDs)-1) + ")"
-	args := make([]any, len(itemIDs))
-	for i, id := range itemIDs {
-		args[i] = id
-	}
-
-	rows, err := db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return 0, fmt.Errorf("failed to query items: %w", err)
-	}
-	defer rows.Close()
-
-	var totalValue int64
-	for rows.Next() {
-		var value int64
-		if err := rows.Scan(&value); err != nil {
-			return 0, fmt.Errorf("failed to scan value: %w", err)
+		seen[t] = struct{}{}
+		v, err := stakeTokenValue(ctx, db, t)
+		if err != nil {
+			return 0, err
 		}
-		totalValue += value
+		total += v
 	}
-
-	if err := rows.Err(); err != nil {
-		return 0, fmt.Errorf("error iterating rows: %w", err)
-	}
-
-	return totalValue, nil
+	return total, nil
 }

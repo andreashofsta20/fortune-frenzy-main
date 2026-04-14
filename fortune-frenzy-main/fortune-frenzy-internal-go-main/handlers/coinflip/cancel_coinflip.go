@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"ffinternal-go/models"
 	"ffinternal-go/service"
+	"ffinternal-go/utilities"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -45,6 +46,7 @@ func CancelCoinflip(c *fiber.Ctx) error {
 	if _, err := pipe.Exec(c.Context()); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to cancel coinflip"})
 	}
+	utilities.UnlockItemStakes(c.Context(), redis, utilities.MapItemsToIDs(coinflipData.Player1Items))
 	return c.JSON(fiber.Map{
 		"status":  "OK",
 		"message": "Coinflip canceled successfully",

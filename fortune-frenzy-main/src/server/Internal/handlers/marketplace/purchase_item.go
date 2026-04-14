@@ -3,6 +3,7 @@ package marketplace
 import (
 	"ffinternal-go/models"
 	"ffinternal-go/service"
+	"math"
 	"strconv"
 	"time"
 
@@ -98,10 +99,16 @@ func PurchaseItem(c *fiber.Ctx) error {
 			"error": err.Error(),
 		})
 	}
-	amount = amount * 0.7
+	sellerID, err := strconv.ParseInt(listing.SellerID, 10, 64)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": "invalid seller_id on listing",
+		})
+	}
+	payout := int64(math.Round(amount * 0.7))
 	_, err = tx.ExecContext(c.Context(),
-		"INSERT INTO external_cash_change_requests (user_id, amount, status) VALUES (?, ?, 'pending')",
-		listing.SellerID, amount,
+		"INSERT INTO external_cash_change_requests (user_id, amount, reason) VALUES (?, ?, ?)",
+		sellerID, payout, "marketplace_sale",
 	)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{

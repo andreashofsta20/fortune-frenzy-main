@@ -11,11 +11,6 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-type OpenCaseRequestBody struct {
-	UserID string `json:"user_id"`
-	Lucky  bool   `json:"lucky"`
-}
-
 func OpenCase(c *fiber.Ctx) error {
 	caseID := c.Params("caseId")
 	if caseID == "" {
@@ -36,10 +31,10 @@ func OpenCase(c *fiber.Ctx) error {
 	}
 	defer db.Close()
 
-	var price int64
+	var _storedPrice int64
 	var itemsJSON string
 	var openedCount int64
-	var minValue, maxValue int64
+	var _minValue, _maxValue int64
 	var availableForGems bool
 	var devProduct string
 	var uiPrimary, uiColour string
@@ -48,7 +43,7 @@ func OpenCase(c *fiber.Ctx) error {
 	err = db.QueryRowContext(c.Context(),
 		"SELECT price, items, opened_count, min_value, max_value, available_for_gems, dev_product, ui_primary, ui_colour, next_rotation FROM cases_catalog WHERE id = ?",
 		caseID,
-	).Scan(&price, &itemsJSON, &openedCount, &minValue, &maxValue, &availableForGems, &devProduct, &uiPrimary, &uiColour, &nextRotation)
+	).Scan(&_storedPrice, &itemsJSON, &openedCount, &_minValue, &_maxValue, &availableForGems, &devProduct, &uiPrimary, &uiColour, &nextRotation)
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Case not found"})
 	}
@@ -60,6 +55,11 @@ func OpenCase(c *fiber.Ctx) error {
 
 	if len(caseItems) == 0 {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Case has no items"})
+	}
+
+	computedPrice, minV, maxV, err := EnrichCaseItems(c.Context(), db, caseItems)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to resolve case pricing"})
 	}
 
 	winnerIdx, err := weightedRandomSelect(caseItems)
@@ -88,12 +88,17 @@ func OpenCase(c *fiber.Ctx) error {
 	copyID := generateUAID()
 
 	var serial int
-	err = db.QueryRowContext(c.Context(),
+	if _, err = db.ExecContext(c.Context(),
 		"INSERT INTO item_serials (item_id, next_serial) VALUES (?, 2) ON DUPLICATE KEY UPDATE next_serial = next_serial + 1",
 		wonItemID,
-	).Err()
-	if err == nil {
-		db.QueryRowContext(c.Context(), "SELECT next_serial - 1 FROM item_serials WHERE item_id = ?", wonItemID).Scan(&serial)
+	); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to allocate serial"})
+	}
+	if err = db.QueryRowContext(c.Context(),
+		"SELECT next_serial - 1 FROM item_serials WHERE item_id = ?",
+		wonItemID,
+	).Scan(&serial); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to read serial"})
 	}
 
 	_, err = db.ExecContext(c.Context(),
@@ -104,20 +109,20 @@ func OpenCase(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to grant item"})
 	}
 
-	nextRotStr := time.Now().Add(24 * time.Hour).Format(time.RFC3339)
+	nextRotStr := nextRotationFallback(time.Now()).Format(time.RFC3339)
 	if nextRotation != nil {
 		nextRotStr = nextRotation.Format(time.RFC3339)
 	}
 
 	updatedCase := CaseData{
 		ID:               caseID,
-		Price:            price,
+		Price:            computedPrice,
 		Items:            caseItems,
 		NextRotation:     nextRotStr,
 		UIData:           CaseUIData{Primary: uiPrimary, Colour: uiColour},
 		OpenedCount:      openedCount,
-		MinValue:         minValue,
-		MaxValue:         maxValue,
+		MinValue:         minV,
+		MaxValue:         maxV,
 		AvailableForGems: availableForGems,
 		DevProduct:       devProduct,
 	}

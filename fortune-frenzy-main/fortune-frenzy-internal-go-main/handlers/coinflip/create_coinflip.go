@@ -53,8 +53,9 @@ func CreateCoinflip(c *fiber.Ctx) error {
 		(body.Type != "server" && body.Type != "global" && body.Type != "friends") {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request"})
 	}
-	for _, item := range body.Items {
-		if !strings.HasPrefix(item, "FF") {
+	stakeUA := utilities.MapItemsToIDs(body.Items)
+	for _, u := range stakeUA {
+		if !strings.HasPrefix(u, "FF") {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request"})
 		}
 	}
@@ -68,8 +69,8 @@ func CreateCoinflip(c *fiber.Ctx) error {
 
 	rows, err := db.QueryContext(c.Context(),
 		"SELECT user_asset_id FROM item_copies WHERE user_asset_id IN (?"+
-			strings.Repeat(",?", len(body.Items)-1)+") AND owner_id = ?",
-		append(utilities.ToInterfaceSlice(body.Items), userIDStr)...,
+			strings.Repeat(",?", len(stakeUA)-1)+") AND owner_id = ?",
+		append(utilities.ToInterfaceSlice(stakeUA), userIDStr)...,
 	)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
@@ -84,8 +85,15 @@ func CreateCoinflip(c *fiber.Ctx) error {
 		}
 		confirmedItems[item] = true
 	}
-	if len(confirmedItems) != len(body.Items) {
+	if len(confirmedItems) != len(stakeUA) {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid items"})
+	}
+	listed, err := utilities.AnyItemsListed(c.Context(), db, stakeUA)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	if listed {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "An item is listed on the marketplace"})
 	}
 	keys, err := redis.Keys(c.Context(), "coinflip:*:user:"+userIDStr).Result()
 	if err != nil {
@@ -111,12 +119,18 @@ func CreateCoinflip(c *fiber.Ctx) error {
 			strings.ReplaceAll(
 				base64.StdEncoding.EncodeToString(b), "+", ""), "/", ""), "=")[:coinflipIDLength]
 
+	if err := utilities.LockItemStakes(c.Context(), redis, stakeUA, "coinflip:"+coinflipID, int64(coinflipTTL/time.Second)); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Item already in use"})
+	}
+
 	userInfo, err := utilities.GetUserInfo(c.Context(), db, []string{userIDStr})
 	if err != nil {
+		utilities.UnlockItemStakes(c.Context(), redis, stakeUA)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to get user info"})
 	}
-	itemString, err := utilities.GetItemString(c.Context(), db, body.Items)
+	itemString, err := utilities.GetItemString(c.Context(), db, stakeUA)
 	if err != nil {
+		utilities.UnlockItemStakes(c.Context(), redis, stakeUA)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to get item string"})
 	}
 
@@ -135,6 +149,7 @@ func CreateCoinflip(c *fiber.Ctx) error {
 
 	data, err := json.Marshal(coinflipData)
 	if err != nil {
+		utilities.UnlockItemStakes(c.Context(), redis, stakeUA)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create coinflip"})
 	}
 
@@ -144,6 +159,7 @@ func CreateCoinflip(c *fiber.Ctx) error {
 	pipe.SAdd(c.Context(), "coinflips:global", coinflipID)
 	pipe.Set(c.Context(), "coinflip:"+coinflipID+":user:"+userIDStr, "active", coinflipTTL)
 	if _, err = pipe.Exec(c.Context()); err != nil {
+		utilities.UnlockItemStakes(c.Context(), redis, stakeUA)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to create coinflip"})
 	}
 

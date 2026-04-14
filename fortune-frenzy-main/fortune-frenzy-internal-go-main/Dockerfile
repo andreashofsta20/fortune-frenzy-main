@@ -3,7 +3,8 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o main ./main.go
+# tidy fills transitive go.sum lines (e.g. golang.org/x/* via mongo-driver) when host go.sum is stale
+RUN go mod tidy && CGO_ENABLED=0 GOOS=linux go build -o main ./main.go
 
 FROM alpine:latest
 RUN apk --no-cache add ca-certificates wget

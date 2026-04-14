@@ -107,14 +107,6 @@ interface ClientToServerFunctions {
 				};
 			};
 		};
-		AddCash: (
-			userId: number,
-			amount: number,
-		) => {
-			status: string;
-			message?: string;
-			balance?: number;
-		};
 		RemoveCash: (
 			userId: number,
 			amount: number,

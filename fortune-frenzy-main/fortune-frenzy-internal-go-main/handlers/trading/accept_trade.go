@@ -3,6 +3,7 @@ package trading
 import (
 	"encoding/json"
 	"ffinternal-go/service"
+	"ffinternal-go/utilities"
 	"strconv"
 	"strings"
 	"time"
@@ -39,6 +40,9 @@ func AcceptTrade(c *fiber.Ctx) error {
 	var initiatorItems, receiverItems []string
 	_ = json.Unmarshal([]byte(initiatorItemsJSON), &initiatorItems)
 	_ = json.Unmarshal([]byte(receiverItemsJSON), &receiverItems)
+	// Stake lines are often "user_asset_id:item_id"; item_copies.user_asset_id is bare UAID only.
+	initiatorUAIDs := utilities.MapItemsToIDs(initiatorItems)
+	receiverUAIDs := utilities.MapItemsToIDs(receiverItems)
 
 	tx, err := db.BeginTx(c.Context(), nil)
 	if err != nil {
@@ -49,12 +53,12 @@ func AcceptTrade(c *fiber.Ctx) error {
 	initiatorIDStr := strconv.FormatInt(initiatorID, 10)
 	receiverIDStr := strconv.FormatInt(receiverID, 10)
 
-	if len(initiatorItems) > 0 {
-		placeholders := "?" + strings.Repeat(",?", len(initiatorItems)-1)
-		args := make([]any, 0, len(initiatorItems)+1)
+	if len(initiatorUAIDs) > 0 {
+		placeholders := "?" + strings.Repeat(",?", len(initiatorUAIDs)-1)
+		args := make([]any, 0, len(initiatorUAIDs)+1)
 		args = append(args, receiverID)
-		for _, item := range initiatorItems {
-			args = append(args, item)
+		for _, uaid := range initiatorUAIDs {
+			args = append(args, uaid)
 		}
 		_, err = tx.ExecContext(c.Context(),
 			"UPDATE item_copies SET owner_id = ? WHERE user_asset_id IN ("+placeholders+") AND owner_id = "+initiatorIDStr,
@@ -65,12 +69,12 @@ func AcceptTrade(c *fiber.Ctx) error {
 		}
 	}
 
-	if len(receiverItems) > 0 {
-		placeholders := "?" + strings.Repeat(",?", len(receiverItems)-1)
-		args := make([]any, 0, len(receiverItems)+1)
+	if len(receiverUAIDs) > 0 {
+		placeholders := "?" + strings.Repeat(",?", len(receiverUAIDs)-1)
+		args := make([]any, 0, len(receiverUAIDs)+1)
 		args = append(args, initiatorID)
-		for _, item := range receiverItems {
-			args = append(args, item)
+		for _, uaid := range receiverUAIDs {
+			args = append(args, uaid)
 		}
 		_, err = tx.ExecContext(c.Context(),
 			"UPDATE item_copies SET owner_id = ? WHERE user_asset_id IN ("+placeholders+") AND owner_id = "+receiverIDStr,
@@ -91,6 +95,12 @@ func AcceptTrade(c *fiber.Ctx) error {
 
 	if err := tx.Commit(); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to commit transaction"})
+	}
+
+	stakeUA := append(append([]string{}, initiatorUAIDs...), receiverUAIDs...)
+	if len(stakeUA) > 0 {
+		redis := service.GetRedisConnection()
+		utilities.UnlockItemStakes(c.Context(), redis, stakeUA)
 	}
 
 	return c.JSON(fiber.Map{

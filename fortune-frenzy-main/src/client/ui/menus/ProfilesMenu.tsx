@@ -12,6 +12,7 @@ import { usePxScale } from "client/hooks/use-scale";
 import { Functions } from "client/network";
 import { currentSelectedPlayerAtom, newTradeStateAtom, isLoadingAtom } from "client/utils/global-state";
 import { requestServer } from "client/utils/send-function";
+import { Players } from "@rbxts/services";
 
 interface Props {
 	visible: boolean;
@@ -168,6 +169,11 @@ export const ProfilesMenu = React.memo(({ visible, flashMenu }: Props) => {
 			});
 		},
 		autoSelectButtonVisible: false,
+		excludeListedCopies: true,
+		listedCopiesSellerUserId:
+			newTradeState.currentlySelectingFor === "local"
+				? tostring(Players.LocalPlayer.UserId)
+				: newTradeState.otherPlayerInfo.userId,
 		confirmButtonEvent: () => {
 			newTradeStateAtom((prev) => ({ ...prev, currentlySelectingFor: "none" }));
 		},

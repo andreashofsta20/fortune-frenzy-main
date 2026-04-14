@@ -27,6 +27,24 @@ func parseTransferUserID(raw interface{}) string {
 	return ""
 }
 
+// dedupeUAIDs preserves first-seen order. Duplicate IDs in one entry made COUNT(*) from SQL
+// fall short of len(items) and incorrectly returned 400 (coinflip stacks, client retries, etc.).
+func dedupeUAIDs(items []string) []string {
+	seen := make(map[string]struct{}, len(items))
+	out := make([]string, 0, len(items))
+	for _, s := range items {
+		if s == "" {
+			continue
+		}
+		if _, ok := seen[s]; ok {
+			continue
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+	return out
+}
+
 func TransferItems(c *fiber.Ctx) error {
 	var entries []TransferEntry
 	if err := c.BodyParser(&entries); err != nil {
@@ -42,6 +60,10 @@ func TransferItems(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to connect to database"})
 	}
 	defer db.Close()
+
+	for i := range entries {
+		entries[i].Items = dedupeUAIDs(entries[i].Items)
+	}
 
 	for _, entry := range entries {
 		userIDStr := parseTransferUserID(entry.UserID)

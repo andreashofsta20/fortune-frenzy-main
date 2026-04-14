@@ -17,7 +17,7 @@ export const COINS = {
 
 export const COINFLIP_VIEWING_STATUSES = {
 	waiting_for_player: "Waiting for another player..",
-	awaiting_confirmation: "Waiting for global syncronization..",
+	awaiting_confirmation: "Finalizing flip on server…",
 	completed: "This coinflip has been marked as complete!",
 	failed: "Something went wrong - contact support if this issue persists.",
 };

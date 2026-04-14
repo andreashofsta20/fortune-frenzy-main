@@ -58,6 +58,10 @@ func insertCashChange(c *fiber.Ctx, userID string, delta int64) error {
 }
 
 func GetCashChanges(c *fiber.Ctx) error {
+	if service.MongoWalletEnabled() {
+		return c.JSON(fiber.Map{"status": "OK", "changes": []any{}})
+	}
+
 	userIDsHeader := c.Get("user-ids")
 	if userIDsHeader == "" {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Missing user-ids header"})
@@ -150,6 +154,14 @@ func AddCash(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Amount must be positive"})
 	}
 
+	if service.MongoWalletEnabled() {
+		cash, err := service.WalletAdjustCash(c.Context(), userID, amt)
+		if err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to adjust wallet"})
+		}
+		return c.JSON(fiber.Map{"status": "OK", "cash": cash})
+	}
+
 	if err := insertCashChange(c, userID, amt); err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to add cash change"})
 	}
@@ -169,6 +181,14 @@ func RemoveCash(c *fiber.Ctx) error {
 	}
 	if amt <= 0 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Amount must be positive"})
+	}
+
+	if service.MongoWalletEnabled() {
+		cash, err := service.WalletAdjustCash(c.Context(), userID, -amt)
+		if err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to adjust wallet"})
+		}
+		return c.JSON(fiber.Map{"status": "OK", "cash": cash})
 	}
 
 	if err := insertCashChange(c, userID, -amt); err != nil {

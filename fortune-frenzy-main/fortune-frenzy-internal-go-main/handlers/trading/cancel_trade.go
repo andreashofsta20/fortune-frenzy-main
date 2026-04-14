@@ -1,7 +1,9 @@
 package trading
 
 import (
+	"encoding/json"
 	"ffinternal-go/service"
+	"ffinternal-go/utilities"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -19,11 +21,11 @@ func CancelTrade(c *fiber.Ctx) error {
 	}
 	defer db.Close()
 
-	var status string
+	var status, initiatorItemsJSON, receiverItemsJSON string
 	err = db.QueryRowContext(c.Context(),
-		"SELECT status FROM trades WHERE id = ?",
+		"SELECT status, initiator_items, receiver_items FROM trades WHERE id = ?",
 		tradeID,
-	).Scan(&status)
+	).Scan(&status, &initiatorItemsJSON, &receiverItemsJSON)
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Trade not found"})
 	}
@@ -38,6 +40,15 @@ func CancelTrade(c *fiber.Ctx) error {
 	)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to cancel trade"})
+	}
+
+	var initiatorItems, receiverItems []string
+	_ = json.Unmarshal([]byte(initiatorItemsJSON), &initiatorItems)
+	_ = json.Unmarshal([]byte(receiverItemsJSON), &receiverItems)
+	stakeUA := append(utilities.MapItemsToIDs(initiatorItems), utilities.MapItemsToIDs(receiverItems)...)
+	if len(stakeUA) > 0 {
+		redis := service.GetRedisConnection()
+		utilities.UnlockItemStakes(c.Context(), redis, stakeUA)
 	}
 
 	return c.JSON(fiber.Map{

@@ -43,7 +43,47 @@ func InitMariaDB() {
 		log.Fatalf("Failed to ping MariaDB: %v", err)
 	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	if err = ensureItemsAllowDirectShopPurchase(ctx, pool); err != nil {
+		log.Fatalf("Failed to ensure items.allow_direct_shop_purchase (required for marketplace catalog): %v", err)
+	}
+
 	log.Println("Connected to MariaDB")
+}
+
+// ensureItemsAllowDirectShopPurchase adds items.allow_direct_shop_purchase if missing (same as migration 005).
+// Deploys that skip migration files still get a working catalog instead of HTTP 500 on marketplace reads.
+func ensureItemsAllowDirectShopPurchase(ctx context.Context, db *sql.DB) error {
+	var n int
+	err := db.QueryRowContext(ctx, `
+SELECT COUNT(*) FROM information_schema.COLUMNS
+WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'items' AND COLUMN_NAME = 'allow_direct_shop_purchase'
+`).Scan(&n)
+	if err != nil {
+		return fmt.Errorf("information_schema check: %w", err)
+	}
+	if n > 0 {
+		return nil
+	}
+	_, err = db.ExecContext(ctx, `
+ALTER TABLE items
+  ADD COLUMN allow_direct_shop_purchase TINYINT(1) NOT NULL DEFAULT 1
+`)
+	if err != nil {
+		return fmt.Errorf("ALTER TABLE items ADD allow_direct_shop_purchase: %w", err)
+	}
+	_, err = db.ExecContext(ctx, `
+UPDATE items SET allow_direct_shop_purchase = 0 WHERE id IN (
+  'starter_cap', 'lucky_shades', 'arcane_band', 'neon_chain', 'rogue_mask', 'royal_crown',
+  'lava_horns', 'frost_blade', 'void_wings', 'storm_halo', 'celestial_orb', 'mythic_dragon'
+)
+`)
+	if err != nil {
+		return fmt.Errorf("UPDATE items allow_direct_shop_purchase for case-only rows: %w", err)
+	}
+	log.Println("Applied items.allow_direct_shop_purchase schema (was missing)")
+	return nil
 }
 
 func GetMariaDBConnection() (*sql.Conn, error) {

@@ -13,7 +13,9 @@ import {
 	GetTradesResponse,
 	Trade,
 } from "typings/APIResponses";
-import { GetUAIDsForOnlineInventory } from "server/util/get-uaid-from-quantity";
+import { GetUAIDsForOfflineInventory, GetUAIDsForOnlineInventory } from "server/util/get-uaid-from-quantity";
+import { formatStakeTokensWithItemIds } from "server/util/format-stake-tokens";
+import { MarketplaceService } from "./MarketplaceService";
 import log from "shared/util/log";
 import { setDecimalPlaces } from "shared/util/number-utils";
 import getPollingCooldown from "server/util/get-polling-cooldown";
@@ -31,6 +33,7 @@ export class TradingService implements OnStart {
 	constructor(
 		private playerManagementService: PlayerManagementService,
 		private itemManagementService: ItemManagementService,
+		private marketplaceService: MarketplaceService,
 	) {}
 
 	private shouldNotify(player: Player | undefined, tradeId: number, change: string) {
@@ -55,40 +58,6 @@ export class TradingService implements OnStart {
 
 	private getSafeUserId(str: string): number {
 		return tonumber(str) ?? 0;
-	}
-
-	private async isUserActiveInAnyServer(userId: number): Promise<boolean> {
-		if (Players.GetPlayerByUserId(userId)) return true;
-
-		const request = await new Request("GET", `/users/${userId}/active`).GetResponse<{ active?: boolean }>();
-		if (request.Code !== 200) return false;
-		return request.Response.active === true;
-	}
-
-	private selectUAIDsFromItemCounts(
-		inventory: [string, string, string, string][],
-		requestedItems: Record<string, number>,
-	): string[] | undefined {
-		const grouped = new Map<string, string[]>();
-		for (const [itemId, uaid] of inventory) {
-			if (!grouped.has(itemId)) grouped.set(itemId, []);
-			grouped.get(itemId)!.push(uaid);
-		}
-
-		const selectedUAIDs = new Array<string>();
-		for (const [itemId, rawCount] of pairs(requestedItems)) {
-			const count = math.max(0, math.floor(rawCount as number));
-			if (count <= 0) continue;
-
-			const availableUAIDs = grouped.get(itemId as string) ?? [];
-			if (availableUAIDs.size() < count) return undefined;
-
-			for (let i = 0; i < count; i++) {
-				selectedUAIDs.push(availableUAIDs[i]);
-			}
-		}
-
-		return selectedUAIDs;
 	}
 
 	private validateAndNormalizeTradeItems(
@@ -199,6 +168,68 @@ export class TradingService implements OnStart {
 		}
 	}
 
+	/** Merges one trade from MariaDB into online profiles + local cache. Used by polling and join-time hydration. */
+	private async ingestTradeFromBackend(trade: Trade, notifyNewInbound: boolean) {
+		const tradeId = tostring(trade.trade_id);
+
+		const initiatorPlayer = Players.GetPlayerByUserId(this.getSafeUserId(trade.initiator.user_id));
+		const receiverPlayer = Players.GetPlayerByUserId(this.getSafeUserId(trade.receiver.user_id));
+		const initiatorProfile = initiatorPlayer
+			? await this.playerManagementService.getOnlineProfile(initiatorPlayer)
+			: undefined;
+		const receiverProfile = receiverPlayer
+			? await this.playerManagementService.getOnlineProfile(receiverPlayer)
+			: undefined;
+
+		this.updateProfileTradeStatus(initiatorProfile, trade);
+		this.updateProfileTradeStatus(receiverProfile, trade);
+
+		const oldStatus = this.upsertLocalTrade(trade);
+
+		if (!oldStatus) {
+			if (!notifyNewInbound) return;
+
+			const creationTime = DateTime.fromIsoDate(trade.created_at);
+			const inboundKey = `${tradeId}-${receiverPlayer?.UserId}-inbound`;
+
+			if (
+				creationTime &&
+				creationTime.UnixTimestamp + 60 > DateTime.now().UnixTimestamp &&
+				trade.status === "pending" &&
+				receiverProfile &&
+				receiverPlayer &&
+				!this.sentNotifications.has(inboundKey)
+			) {
+				this.sentNotifications.add(inboundKey);
+				task.delay(60, () => this.sentNotifications.delete(inboundKey));
+
+				Events.NewTrade.fire(receiverPlayer, tradeId, receiverProfile.Data.Trades);
+			}
+		} else {
+			this.handleTradeStatusChange(trade, oldStatus);
+		}
+	}
+
+	/**
+	 * Pulls pending/history trades from the API into the player's DataStore session before the client
+	 * calls GetTrades (after __SERVER_LOADED). Fixes offline receivers and avoids races with the poller.
+	 */
+	public async hydrateTradesForJoiningPlayer(player: Player) {
+		const request = await new Request("GET", `/trades/${player.UserId}`).GetResponse();
+		if (request.Code !== 200) {
+			log(
+				"warn",
+				`[TradingService] hydrateTradesForJoiningPlayer failed for ${player.UserId} (Code=${request.Code})`,
+			);
+			return;
+		}
+
+		const response = request.Response as GetTradesResponse;
+		for (const trade of response.trades) {
+			await this.ingestTradeFromBackend(trade, false);
+		}
+	}
+
 	private async updateTrades() {
 		const players = Players.GetPlayers();
 		if (players.isEmpty()) return;
@@ -212,42 +243,7 @@ export class TradingService implements OnStart {
 		const response = request.Response as GetTradesResponse;
 
 		for (const trade of response.trades) {
-			const tradeId = tostring(trade.trade_id);
-
-			const initiatorPlayer = Players.GetPlayerByUserId(this.getSafeUserId(trade.initiator.user_id));
-			const receiverPlayer = Players.GetPlayerByUserId(this.getSafeUserId(trade.receiver.user_id));
-			const initiatorProfile = initiatorPlayer
-				? await this.playerManagementService.getOnlineProfile(initiatorPlayer)
-				: undefined;
-			const receiverProfile = receiverPlayer
-				? await this.playerManagementService.getOnlineProfile(receiverPlayer)
-				: undefined;
-
-			this.updateProfileTradeStatus(initiatorProfile, trade);
-			this.updateProfileTradeStatus(receiverProfile, trade);
-
-			const oldStatus = this.upsertLocalTrade(trade);
-
-			if (!oldStatus) {
-				const creationTime = DateTime.fromIsoDate(trade.created_at);
-				const inboundKey = `${tradeId}-${receiverPlayer?.UserId}-inbound`;
-
-				if (
-					creationTime &&
-					creationTime.UnixTimestamp + 60 > DateTime.now().UnixTimestamp &&
-					trade.status === "pending" &&
-					receiverProfile &&
-					receiverPlayer &&
-					!this.sentNotifications.has(inboundKey)
-				) {
-					this.sentNotifications.add(inboundKey);
-					task.delay(60, () => this.sentNotifications.delete(inboundKey));
-
-					Events.NewTrade.fire(receiverPlayer, tradeId, receiverProfile.Data.Trades);
-				}
-			} else {
-				this.handleTradeStatusChange(trade, oldStatus);
-			}
+			await this.ingestTradeFromBackend(trade, true);
 		}
 
 		playerIds.split(",").forEach((idStr) => {
@@ -301,14 +297,8 @@ export class TradingService implements OnStart {
 
 	private handlePlayerLeave(player: Player) {
 		const userId = tostring(player.UserId);
-		this.Trades.forEach((trade) => {
-			if (
-				(trade.status === "pending" || trade.status === "accepted") &&
-				(trade.initiator.user_id === userId || trade.receiver.user_id === userId)
-			) {
-				this.cancelTrade(player, tostring(trade.trade_id));
-			}
-		});
+		// Do not auto-cancel pending trades on disconnect. Otherwise an outbound trade to an offline
+		// player is cancelled as soon as the initiator leaves the game, and the receiver never sees it.
 
 		const playerNotifications = new Array<string>();
 		this.sentNotifications.forEach((notificationId) => {
@@ -361,20 +351,18 @@ export class TradingService implements OnStart {
 			if (!receiverProfile) {
 				return { status: "error", code: 400, message: "Receiver profile not loaded" };
 			}
-		} else {
-			const receiverIsActiveInGame = await this.isUserActiveInAnyServer(receiver_id);
-			if (!receiverIsActiveInGame) {
-				return { status: "error", code: 404, message: "Player must be active in-game to trade" };
-			}
 		}
+		// Offline receivers: validate items via DB (getOfflineUserInventory) + Go /trades/create — no "must be online" gate.
 
 		await this.playerManagementService.refreshInventory(initiator);
 
+		const initiatorListed = this.marketplaceService.getListedUserAssetIdsForSeller(tostring(initiator.UserId));
 		const initiatorSelectedUAIDs = GetUAIDsForOnlineInventory(
 			this.itemManagementService,
 			this.playerManagementService,
 			initiator,
 			normalizedInitiatorItems,
+			initiatorListed,
 		);
 		if (initiatorSelectedUAIDs.size() === 0) {
 			return {
@@ -384,6 +372,7 @@ export class TradingService implements OnStart {
 			};
 		}
 
+		const receiverListed = this.marketplaceService.getListedUserAssetIdsForSeller(tostring(receiver_id));
 		let receiverSelectedUAIDs: string[] | undefined;
 		if (receiverPlayer) {
 			receiverSelectedUAIDs = GetUAIDsForOnlineInventory(
@@ -391,10 +380,15 @@ export class TradingService implements OnStart {
 				this.playerManagementService,
 				receiverPlayer,
 				normalizedReceiverItems,
+				receiverListed,
 			);
 		} else {
 			const receiverInventory = await this.playerManagementService.getOfflineUserInventory(receiver_id);
-			receiverSelectedUAIDs = this.selectUAIDsFromItemCounts(receiverInventory, normalizedReceiverItems);
+			receiverSelectedUAIDs = GetUAIDsForOfflineInventory(
+				receiverInventory,
+				normalizedReceiverItems,
+				receiverListed,
+			);
 		}
 
 		if (!receiverSelectedUAIDs || receiverSelectedUAIDs.size() === 0) {
@@ -404,8 +398,8 @@ export class TradingService implements OnStart {
 		const createResponse = await new Request("POST", "/trades/create", undefined, {
 			initiator_id: tostring(initiator.UserId),
 			receiver_id: tostring(receiver_id),
-			initiator_items: initiatorSelectedUAIDs,
-			receiver_items: receiverSelectedUAIDs,
+			initiator_items: formatStakeTokensWithItemIds(this.itemManagementService, initiatorSelectedUAIDs),
+			receiver_items: formatStakeTokensWithItemIds(this.itemManagementService, receiverSelectedUAIDs),
 			initiator_item_counts: normalizedInitiatorItems,
 			receiver_item_counts: normalizedReceiverItems,
 		}).GetResponse();

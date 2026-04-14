@@ -1,8 +1,11 @@
 package marketplace
 
 import (
+	"bytes"
 	"database/sql"
+	"encoding/json"
 	"ffinternal-go/service"
+	"ffinternal-go/utilities"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -21,11 +24,22 @@ func ListItem(c *fiber.Ctx) error {
 		Price  *float64 `json:"price"`
 		Expiry *int64   `json:"expiry"`
 	}
+	raw := bytes.TrimSpace(c.Body())
+	// Packet / Luau may send null, empty body, or (rarely) [] for an empty table — none decode as a JSON object.
+	if len(raw) == 0 || bytes.Equal(raw, []byte("null")) || bytes.Equal(raw, []byte("[]")) {
+		raw = []byte("{}")
+	}
 	var body RequestBody
-	if err := c.BodyParser(&body); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Missing or invalid body",
-		})
+	if err := json.Unmarshal(raw, &body); err != nil {
+		var arr []json.RawMessage
+		if json.Unmarshal(raw, &arr) == nil {
+			raw = []byte("{}")
+			if err := json.Unmarshal(raw, &body); err != nil {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Missing or invalid body"})
+			}
+		} else {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Missing or invalid body"})
+		}
 	}
 
 	con, err := service.GetMariaDBConnection()
@@ -60,6 +74,13 @@ func ListItem(c *fiber.Ctx) error {
 	if *body.Price <= 0 {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid price, must be a positive number",
+		})
+	}
+
+	rdb := service.GetRedisConnection()
+	if err := utilities.CheckItemsNotStaked(c.Context(), rdb, []string{userAssetID}); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Item is in use (coinflip, jackpot, or pending trade)",
 		})
 	}
 

@@ -51,7 +51,9 @@ export function CloseButton({
 	const upscalePosition = typeIs(closePosition, "UDim2")
 		? new UDim2(closePosition.X.Scale, closePosition.X.Offset - 37, closePosition.Y.Scale, closePosition.Y.Offset + 3)
 		: new UDim2(0, -37, 0, 3);
-	const { hitSize: upscaleHitSize, iconSize: upscaleIconSize, needsWrapper: upscaleNeedsWrapper } = makeTapTarget(hitSize);
+	const upscaleVisualSize = new UDim2(0, 21, 0, 21);
+	const { hitSize: upscaleHitSize, iconSize: upscaleIconSize, needsWrapper: upscaleNeedsWrapper } =
+		makeTapTarget(upscaleVisualSize);
 
 	const closeButton = needsWrapper ? (
 		<imagebutton

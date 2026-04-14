@@ -41,14 +41,16 @@ export function ItemPageStatsSection({ data }: Props) {
 			{[
 				[MARKETPLACE_ITEM_STATS_QUANTITY, "{{s}} Exist Globally", "rbxassetid://77525717960367"],
 				[MARKETPLACE_ITEM_STATS_VALUE, "{{s}}", "rbxassetid://120000048331921"],
-				[MARKETPLACE_ITEM_STATS_AVERAGE_PRICE, "${{s}}", "rbxassetid://124386301085688"],
+				[MARKETPLACE_ITEM_STATS_AVERAGE_PRICE, "{{s}}", "rbxassetid://124386301085688"],
 				[MARKETPLACE_ITEM_STATS_RARITY, "{{s}}", "rbxassetid://87151112535180"],
 			].map((info, index) => {
 				let subtitle = "Unknown";
 
 				switch (info[0]) {
 					case MARKETPLACE_ITEM_STATS_QUANTITY:
-						subtitle = addCommasToNumber(data?.data.total_unboxed || 0);
+						subtitle = addCommasToNumber(
+							data?.data.copies_in_circulation ?? data?.data.total_unboxed ?? 0,
+						);
 						break;
 					case MARKETPLACE_ITEM_STATS_VALUE:
 						subtitle = addCommasToNumber(data?.data.value || 0);
@@ -57,7 +59,10 @@ export function ItemPageStatsSection({ data }: Props) {
 						subtitle = capitalizeFirstChar(data?.rarity || "");
 						break;
 					case MARKETPLACE_ITEM_STATS_AVERAGE_PRICE:
-						subtitle = addCommasToNumber(data?.data.average_price || 0);
+						subtitle =
+							(data?.data.average_price ?? 0) > 0
+								? `$${addCommasToNumber(data!.data.average_price)}`
+								: "-";
 						break;
 				}
 

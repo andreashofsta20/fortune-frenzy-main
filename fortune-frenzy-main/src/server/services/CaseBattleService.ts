@@ -16,6 +16,10 @@ export class CaseBattleService implements OnStart {
 	private readonly COMPLETED_CLEANUP_INTERVAL = 10;
 	private supportsGlobalCompletedCleanup = true;
 	private completedBattleTimestamps = new Map<string, number>();
+	/** Ensures we run payouts at most once per battle on this server (survives cleanup removing completed from local state). */
+	private caseBattlePayoutHandledIds = new Set<string>();
+	/** When an in_progress battle disappears from GET /casebattles, keep local copy briefly so we can still observe completed. */
+	private vanishedFromApiAt = new Map<string, number>();
 	private locallyCleanedUpIds = new Set<string>();
 
 	constructor(
@@ -29,10 +33,6 @@ export class CaseBattleService implements OnStart {
 	async onStart(): Promise<void> {
 		const startTime = tick();
 		log("warn", "⌛ [CaseBattleService] Starting...");
-
-		Players.PlayerRemoving.Connect((player) => {
-			this.handlePlayerDisconnect(player);
-		});
 
 		this.subscribeToCrossServerEvents();
 
@@ -61,44 +61,6 @@ export class CaseBattleService implements OnStart {
 			this.CaseBattles = this.CaseBattles.filter((b) => !ids.includes(b.id));
 			Events.CaseBattlesUpdated.broadcast({ updated: [], removed: ids });
 		});
-	}
-
-	private handlePlayerDisconnect(player: Player): void {
-		const userId = tostring(player.UserId);
-
-		for (const battle of this.CaseBattles) {
-			if (battle.status !== "waiting_for_players") continue;
-
-			const isCreator = battle.players.size() > 0 && battle.players[0].id === userId;
-			if (!isCreator) continue;
-
-			const hasOtherPlayers = battle.players.size() > 1 && battle.players.some((p) => p.id !== userId);
-			if (hasOtherPlayers) continue;
-
-			task.spawn(async () => {
-				try {
-					const request = await new Request("POST", `/casebattles/cancel/${battle.id}`, undefined, {
-						user_id: player.UserId,
-					}).GetResponse();
-					if (request.Code === 200) {
-						const cost = this.calculateCaseBattleCost(battle.cases);
-						if (cost > 0) {
-							const transactionId = await this.PlayerManagementService.addCash(player, cost, {
-								transactionType: Enum.AnalyticsEconomyTransactionType.Gameplay.Name,
-								stockKeepingUnit: `CASE_BATTLE_REFUND_${battle.id}`,
-							});
-							if (transactionId) this.PlayerManagementService.confirmAddCash(transactionId);
-						}
-
-						this.CaseBattles = this.CaseBattles.filter((b) => b.id !== battle.id);
-						Events.CaseBattlesUpdated.broadcast({ updated: [], removed: [battle.id] });
-						log("print", `[CaseBattleService] Auto-cancelled battle ${battle.id} for disconnected creator ${userId}`);
-					}
-				} catch (err) {
-					log("warn", `[CaseBattleService] Failed to auto-cancel battle ${battle.id} on disconnect: ${err}`);
-				}
-			});
-		}
 	}
 
 	calculateCaseBattleCost(cases: string[]): number {
@@ -162,6 +124,15 @@ export class CaseBattleService implements OnStart {
 		}
 	}
 
+	private caseBattleHasLocalParticipant(battle: CaseBattleData): boolean {
+		for (const p of battle.players) {
+			const uid = tonumber(p.id) as number;
+			if (uid <= 0) continue;
+			if (Players.GetPlayerByUserId(uid)) return true;
+		}
+		return false;
+	}
+
 	private handleCaseBattleCompleted(battle: CaseBattleData) {
 		log(
 			"print",
@@ -186,18 +157,7 @@ export class CaseBattleService implements OnStart {
 
 			log("print", `[CaseBattleService] Payout: player=${participant.id}, didWin=${didWin}, amountWon=${amountWon}`);
 
-			if (didWin && amountWon > 0) {
-				const payoutTransactionId = this.PlayerManagementService.addCash(player, amountWon, {
-					transactionType: Enum.AnalyticsEconomyTransactionType.Gameplay.Name,
-					stockKeepingUnit: `CASE_BATTLE_${battle.id}`,
-				});
-
-				task.spawn(async () => {
-					const transactionId = await payoutTransactionId;
-					if (!transactionId) return;
-					this.PlayerManagementService.confirmAddCash(transactionId);
-				});
-			}
+			// Winnings are credited by the Go backend (Mongo wallet_adjust / Maria cash_changes) so offline winners still get paid.
 
 			this.PlayerManagementService.recordMinigameOutcome(
 				player,
@@ -218,7 +178,22 @@ export class CaseBattleService implements OnStart {
 		}
 
 		const rawCaseBattles = (Response as { casebattles: CaseBattleData[] }).casebattles;
-		const caseBattles = rawCaseBattles.filter((cb) => !this.locallyCleanedUpIds.has(cb.id));
+		const fromApi = rawCaseBattles.filter((cb) => !this.locallyCleanedUpIds.has(cb.id));
+		const apiIds = new Set(fromApi.map((cb) => cb.id));
+
+		const caseBattles: CaseBattleData[] = [...fromApi];
+		for (const prev of this.CaseBattles) {
+			if (apiIds.has(prev.id)) continue;
+			if (prev.status !== "in_progress") continue;
+			const since = this.vanishedFromApiAt.get(prev.id) ?? tick();
+			this.vanishedFromApiAt.set(prev.id, since);
+			if (tick() - since < 15) {
+				caseBattles.push(prev);
+			}
+		}
+		for (const cb of fromApi) {
+			this.vanishedFromApiAt.delete(cb.id);
+		}
 
 		const oldById = new Map(this.CaseBattles.map((cb) => [cb.id, cb]));
 		const newIds = new Set(caseBattles.map((cb) => cb.id));
@@ -229,16 +204,32 @@ export class CaseBattleService implements OnStart {
 				this.completedBattleTimestamps.set(cb.id, seenAt);
 				return tick() - seenAt >= 15;
 			}
+			if (cb.status === "in_progress") {
+				const since = this.vanishedFromApiAt.get(cb.id) ?? tick();
+				this.vanishedFromApiAt.set(cb.id, since);
+				return tick() - since >= 15;
+			}
 			return true;
 		}).map((cb) => cb.id);
-		removed.forEach((id) => this.completedBattleTimestamps.delete(id));
+		removed.forEach((id) => {
+			this.completedBattleTimestamps.delete(id);
+			this.vanishedFromApiAt.delete(id);
+		});
 		const updated: CaseBattleData[] = [];
+		let anyJustCompleted = false;
 
 		for (const cb of caseBattles) {
 			const prev = oldById.get(cb.id);
-			if (prev && prev.status !== "completed" && cb.status === "completed") {
-				this.handleCaseBattleCompleted(cb);
+			if (cb.status === "completed" && !this.caseBattlePayoutHandledIds.has(cb.id)) {
+				this.caseBattlePayoutHandledIds.add(cb.id);
 				this.completedBattleTimestamps.set(cb.id, tick());
+				anyJustCompleted = true;
+				// Defer payouts so a large GET /casebattles payload (many completed keys) does not block
+				// the main thread — Packeter and RemoteFunctions (create / join / bots) would stall for seconds.
+				if (this.caseBattleHasLocalParticipant(cb)) {
+					const snapshot = cb;
+					task.spawn(() => this.handleCaseBattleCompleted(snapshot));
+				}
 			}
 
 			const statusChanged = prev !== undefined && prev.status !== cb.status;
@@ -269,6 +260,9 @@ export class CaseBattleService implements OnStart {
 				updated,
 				removed,
 			});
+		}
+		if (anyJustCompleted) {
+			GameEvents.publish("casebattle_update");
 		}
 	}
 

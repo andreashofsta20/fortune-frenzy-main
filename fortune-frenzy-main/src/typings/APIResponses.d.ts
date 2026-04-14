@@ -4,14 +4,20 @@ export interface Item {
 	name: string;
 	creator: string;
 	description: string;
+	/** Mean price of active marketplace listings (cash). 0 when none listed. */
 	average_price: number;
 	total_unboxed: number;
 	maximum_copies: number;
+	/** Rolimons value */
 	value: number;
+	/** Rows in item_copies for this catalog id */
+	copies_in_circulation?: number;
 	created_at: string;
 	updated_at: string;
 	color: string;
 	category: string;
+	/** 1 (or true) = quick-buy allowed; 0 (or false) = cases / trading / resellers only. API uses 0/1 for reliable replication. */
+	allow_direct_shop_purchase?: boolean | number;
 }
 
 export interface InventoryResponse {
@@ -88,6 +94,8 @@ interface Case {
 		id: string;
 		chance: number;
 		claimed: number;
+		/** Rolimons value from server (expected-value pricing) */
+		value?: number;
 	}[];
 	next_rotation: string;
 	id: string;
@@ -287,8 +295,15 @@ export interface CaseBattleData {
 	current_spin_data: {
 		current_case_index: number;
 		case_id: string;
+		/** Round index as string ("1", "2", …) — matches local backend; may also be "1/N" from older APIs. */
 		progress: string;
 	};
+	/** Go backend: full resolved pulls + payout totals while in progress (optional; client can ignore). */
+	resolved_pulls?: CaseBattleData["player_pulls"];
+	resolved_winners?: {
+		player_id: string;
+		amount_won: number;
+	}[];
 	winners_info?: {
 		player_id: string;
 		amount_won: number;

@@ -3,40 +3,6 @@ import { HttpService, ReplicatedStorage, ServerScriptService } from "@rbxts/serv
 import Base64 from "./base64";
 import { setDecimalPlaces } from "shared/util/number-utils";
 import log from "shared/util/log";
-import LocalBackend from "./local-backend";
-
-declare const fetch: (url: string, init: defined) => Promise<unknown>;
-
-function emitAgentDebugLog(
-	location: string,
-	message: string,
-	data: Record<string, unknown>,
-	runId: string,
-	hypothesisId: string,
-) {
-	// #region agent log
-	task.spawn(() => {
-		pcall(() =>
-			fetch("http://127.0.0.1:7528/ingest/1b6715ac-5dbe-4e21-b0fb-3326720d79ad", {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-					"X-Debug-Session-Id": "4ef876",
-				},
-				body: HttpService.JSONEncode({
-					sessionId: "4ef876",
-					location,
-					message,
-					data,
-					timestamp: DateTime.now().UnixTimestampMillis,
-					runId,
-					hypothesisId,
-				}),
-			}),
-		);
-	});
-	// #endregion
-}
 
 export class Packeter {
 	public NewRequestQueued = new Signal<(requestId: string) => void>();
@@ -44,8 +10,12 @@ export class Packeter {
 
 	private _requestQueue = new Map<string, Request>();
 	private _packeterUrl = "";
-	/** Min seconds between outbound HttpService calls. Roblox caps ~500 req/min per server. */
-	private _requestDelay = 0.5;
+	/**
+	 * Min seconds between outbound HttpService calls (each /packet batch = one call, often many routes).
+	 * Roblox ~500 HttpService requests/min/server → ~8/s max; 0.1s allows ~10/s with headroom when batches combine routes.
+	 * Was 0.5s — felt very slow for purchases while polls shared the same queue.
+	 */
+	private _requestDelay = 0.1;
 	private _status: "alive" | "alive" = "alive";
 	private _currentlyProcessing = false;
 	private _lastHttpRequest = tick();
@@ -54,35 +24,41 @@ export class Packeter {
 	private _apiKey: Secret | undefined;
 	/** False when GetSecret failed — outbound HTTP must not hang on auth errors. */
 	private _apiKeyUsable = false;
-	private _localOnly = false;
 
 	public _jobId = game.JobId || `ROBLOX_STUDIO_${os.clock()}`;
 
 	constructor(packeterUrl: string, requestDelay?: number) {
 		this._packeterUrl = packeterUrl;
-		this._localOnly = packeterUrl === "local";
 
-		this._requestDelay = requestDelay ?? 0.5;
+		this._requestDelay = requestDelay ?? 0.1;
 		Request.currentInstance = this;
 		this.Start();
 	}
 
 	private async Start() {
-		if (this._localOnly) {
-			ServerScriptService.SetAttribute("server_id", this._jobId);
-			ReplicatedStorage.SetAttribute("server_id", this._jobId);
-			this._status = "alive";
-			log("print", `[Packeter] Running in local Roblox-only mode.`);
-			return;
-		}
-
-		const isRegistered = await this._RegisterWithServer();
-		if (!isRegistered) return;
 		ServerScriptService.SetAttribute("server_id", this._jobId);
 		ReplicatedStorage.SetAttribute("server_id", this._jobId);
 
+		let registerOk = await this._RegisterWithServer();
+		if (!registerOk) {
+			warn(
+				"[Packeter] POST /register failed (wrong _backend_url, HttpService not allowed to API host, bad X_API_KEY, or API down). " +
+					"Keeping the request loop alive so players do not hang forever on \"Registering with backend\". Retrying register every 30s.",
+			);
+		}
+
+		let nextRegisterAttempt = registerOk ? math.huge : tick() + 5;
+
 		this._status = "alive";
 		while (this._status === "alive") {
+			if (!registerOk && tick() >= nextRegisterAttempt) {
+				registerOk = await this._RegisterWithServer();
+				nextRegisterAttempt = tick() + 30;
+				if (registerOk) {
+					log("print", `[Packeter] Registered with Packeter API (after retry).`);
+				}
+			}
+
 			if (this._IsReadyToProcessRequests()) {
 				this._currentlyProcessing = true;
 				const packet = this._CreatePacket();
@@ -95,18 +71,7 @@ export class Packeter {
 	}
 
 	private async _RegisterWithServer(): Promise<boolean> {
-		if (this._localOnly) return true;
-
 		const [apiKeySuccess, apiKey] = pcall(() => HttpService.GetSecret("X_API_KEY"));
-		// #region agent log
-		emitAgentDebugLog(
-			"src/server/util/packeter.ts:94",
-			"packeter secret lookup",
-			{ apiKeySuccess, localOnly: this._localOnly },
-			"pre-fix",
-			"H1",
-		);
-		// #endregion
 
 		if (!apiKeySuccess) {
 			warn("[Packeter] Failed to retrieve ApiKey from secrets store:", apiKey);
@@ -124,15 +89,6 @@ export class Packeter {
 				"x-api-key": this._apiKey as unknown as string,
 			},
 		});
-		// #region agent log
-		emitAgentDebugLog(
-			"src/server/util/packeter.ts:113",
-			"packeter register response",
-			{ success, statusCode: result.StatusCode },
-			"pre-fix",
-			"H1",
-		);
-		// #endregion
 
 		if (!success || result.StatusCode !== 200) return false;
 
@@ -167,17 +123,33 @@ export class Packeter {
 			Result?: { Code: number; Response: unknown; Success?: boolean };
 		}[] = [];
 
+		type ReadyItem = { requestId: string; request: Request };
+		const readyItems = new Array<ReadyItem>();
 		for (const [requestId, request] of this._requestQueue) {
 			if (request.status === "ready") {
-				request.status = "pending";
-				packet.push({
-					request_id: requestId,
-					method: request.method,
-					route: request.route,
-					headers: request.headers,
-					body: request.body,
-				});
+				readyItems.push({ requestId, request });
 			}
+		}
+
+		// Never batch GET /users/get-cash-changes with other routes. The API uses a DB
+		// transaction; if it errors or the whole packet fails, it would block case battles,
+		// jackpots, marketplace polls, etc. in the same batch.
+		const isCashChangesRoute = (route: string) => string.find(route, "get-cash-changes", 1, true) !== undefined;
+		const cashItems = readyItems.filter((x) => isCashChangesRoute(x.request.route));
+		const otherItems = readyItems.filter((x) => !isCashChangesRoute(x.request.route));
+
+		const selected =
+			otherItems.size() > 0 ? otherItems : cashItems.size() > 0 ? [cashItems[0]] : [];
+
+		for (const { requestId, request } of selected) {
+			request.status = "pending";
+			packet.push({
+				request_id: requestId,
+				method: request.method,
+				route: request.route,
+				headers: request.headers,
+				body: request.body,
+			});
 		}
 
 		return packet;
@@ -201,25 +173,6 @@ export class Packeter {
 
 		do {
 			attempts++;
-			// #region agent log
-			emitAgentDebugLog(
-				"src/server/util/packeter.ts:188",
-				"packeter packet send",
-				{
-					attempts,
-					packetSize: packet.size(),
-					firstRoutes: (() => {
-						const routes = new Array<string>();
-						for (let i = 0; i < math.min(5, packet.size()); i++) {
-							routes.push(packet[i].route);
-						}
-						return routes;
-					})(),
-				},
-				"pre-fix",
-				"H2",
-			);
-			// #endregion
 			[success, response, lastFailureHint] = await this._DoHttpRequest({
 				Url: `${this._packeterUrl}/packet/${this._jobId}`,
 				Method: "POST",
@@ -254,19 +207,6 @@ export class Packeter {
 			});
 			return;
 		}
-		// #region agent log
-		emitAgentDebugLog(
-			"src/server/util/packeter.ts:228",
-			"packeter packet transport response",
-			{
-				success,
-				statusCode: response.StatusCode,
-				bodyPreview: response.Body.sub(1, math.min(200, response.Body.size())),
-			},
-			"pre-fix",
-			"H2",
-		);
-		// #endregion
 
 		if (response.StatusCode !== 200) {
 			const errPayload = this._tryParseErrorBody(response.Body);
@@ -358,7 +298,8 @@ export class Packeter {
 	}
 
 	private _WaitForNextInterval() {
-		task.wait(this._requestDelay - (tick() - this._lastHttpRequest));
+		const remaining = this._requestDelay - (tick() - this._lastHttpRequest);
+		task.wait(remaining > 0 ? remaining : 0);
 	}
 
 	private _isRobloxHttpThrottleHint(text: string): boolean {
@@ -399,37 +340,17 @@ export class Packeter {
 		this.NewRequestQueued.Fire(data.requestId);
 	}
 
-	public IsLocalMode() {
-		return this._localOnly;
-	}
-
 	public HasOutboundApiKey() {
 		return this._apiKeyUsable;
 	}
 
-	private cloneLocalResponse<T>(payload: T): T {
-		const [encodeSuccess, encodedPayload] = pcall(() => HttpService.JSONEncode(payload)) as LuaTuple<
-			[boolean, unknown]
-		>;
-		if (!encodeSuccess || !typeIs(encodedPayload, "string")) return payload;
-
-		const [decodeSuccess, decodedPayload] = pcall(() => HttpService.JSONDecode(encodedPayload)) as LuaTuple<
-			[boolean, unknown]
-		>;
-		if (!decodeSuccess) return payload;
-
-		return decodedPayload as T;
+	/** Optional override from /settings `packeter_min_interval` (seconds), clamped to a safe range. */
+	public setMinRequestInterval(seconds: number) {
+		if (typeIs(seconds, "number") && seconds >= 0.05 && seconds <= 1.5) {
+			this._requestDelay = seconds;
+		}
 	}
 
-	public ResolveLocalRequest(request: Request): { Code: number; Response: unknown; Success: boolean } {
-		const localResponse = LocalBackend.handleRequest(request.method, request.route, request.headers, request.body);
-		const clonedResponse = this.cloneLocalResponse(localResponse.response);
-		return {
-			Code: localResponse.code,
-			Response: clonedResponse,
-			Success: localResponse.code >= 200 && localResponse.code <= 299,
-		};
-	}
 }
 
 export class Request {
@@ -476,18 +397,6 @@ export class Request {
 				Response: ({ status: "error", message: "Packeter not initialized" } as unknown) as T,
 				Success: false,
 			};
-		}
-
-		if (instance.IsLocalMode()) {
-			const response = instance.ResolveLocalRequest(this) as { Code: number; Response: T; Success: boolean };
-			this.status = "completed";
-			this._response = response;
-
-			if (response.Code !== 200) {
-				warn(`[Packeter] Request to ${this.route} failed with code ${response.Code}`, response.Response);
-			}
-
-			return response;
 		}
 
 		if (!instance.HasOutboundApiKey()) {

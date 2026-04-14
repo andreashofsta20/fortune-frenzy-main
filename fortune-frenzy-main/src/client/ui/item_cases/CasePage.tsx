@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState, useCallback } from "@rbxts/react";
 import { usePx } from "client/hooks/use-px";
 import { palette } from "client/utils/palette";
-import { Case } from "typings/APIResponses";
+import { Case, Item } from "typings/APIResponses";
 import { TextLabel } from "../core/TextLabel";
 import {
 	ITEM_CASES_CASE_MENU_CANT_AFFORD_DESC,
@@ -63,10 +63,28 @@ export function CasePage({ currentCase, setCurrentCase, visible, spinnerState, s
 		const itemTiles = currentCase.items
 			.sort((a, b) => b.chance < a.chance)
 			.map((item, index) => {
+				const catalog = clientStateController.ItemInfo.get(item.id);
+				const displayItem: Item = catalog
+					? { ...catalog, value: item.value !== undefined ? item.value : catalog.value }
+					: {
+							id: item.id,
+							asset_id: "0",
+							name: item.id,
+							creator: "",
+							description: "",
+							average_price: 0,
+							total_unboxed: 0,
+							maximum_copies: 0,
+							value: item.value ?? 0,
+							created_at: "",
+							updated_at: "",
+							color: "#9aa6b2",
+							category: "default",
+						};
 				return (
 					<ItemCard
 						data={{
-							item: clientStateController.ItemInfo.get(item.id)!,
+							item: displayItem,
 							chance: item.chance,
 							claimed: item.claimed,
 						}}
@@ -206,6 +224,7 @@ export function CasePage({ currentCase, setCurrentCase, visible, spinnerState, s
 		>
 			<Corner roundness="small" />
 			<CloseButton
+				showUpscaleButton={false}
 				native={{ Size: new UDim2(0, px(21), 0, px(21)), Position: new UDim2(0, px(855), 0, px(24)) }}
 				event={{
 					Activated: () => {

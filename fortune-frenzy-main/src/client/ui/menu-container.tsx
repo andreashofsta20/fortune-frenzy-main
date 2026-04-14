@@ -86,11 +86,11 @@ function MenuContainer() {
 	}, [currentMenu, flashMenu, menuHolderPositionMotion]);
 
 	return (
-		<MainMenusHolder position={menuHolderPosition} upscaled={menuUpscaled}>
+		<>
+			<MainMenusHolder position={menuHolderPosition} upscaled={menuUpscaled}>
 			<ProfilesMenu visible={isMenuVisible(MENUS.PROFILES)} flashMenu={flashMenu} key={"ProfilesMenu"} />
 			<MarketplaceMenu visible={isMenuVisible(MENUS.MARKETPLACE)} flashMenu={flashMenu} key={"MarketplaceMenu"} />
 			<TradingMenu visible={isMenuVisible(MENUS.TRADING)} flashMenu={flashMenu} key={"TradingMenu"} />
-			<ItemCasesMenu visible={isMenuVisible(MENUS.ITEM_CASES)} flashMenu={flashMenu} key={"ItemCasesMenu"} />
 			<CoinflipMenu visible={isMenuVisible(MENUS.COINFLIP)} flashMenu={flashMenu} key={"CoinflipMenu"} />
 			<RobuxShopMenu visible={isMenuVisible(MENUS.ROBUX_SHOP)} flashMenu={flashMenu} key={"RobuxShopMenu"} />
 			<MinigamesMenu visible={isMenuVisible(MENUS.MINIGAMES)} flashMenu={flashMenu} key={"MinigamesMenu"} />
@@ -124,7 +124,11 @@ function MenuContainer() {
 				flashMenu={flashMenu}
 				key={"LeaderboardsMenu"}
 			/>
-		</MainMenusHolder>
+			</MainMenusHolder>
+			<MainMenusHolder position={menuHolderPosition} upscaled={false}>
+				<ItemCasesMenu visible={isMenuVisible(MENUS.ITEM_CASES)} flashMenu={flashMenu} key={"ItemCasesMenu"} />
+			</MainMenusHolder>
+		</>
 	);
 }
 

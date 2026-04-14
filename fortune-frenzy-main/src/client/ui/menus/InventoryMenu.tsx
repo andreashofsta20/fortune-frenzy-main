@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useReducer, useRef, useState } from "@rbxts/react";
-import { GuiService, UserInputService } from "@rbxts/services";
+import { GuiService, Players, UserInputService } from "@rbxts/services";
 import { Modding } from "@flamework/core";
 import { usePx } from "client/hooks/use-px";
 import { ClientStateController } from "client/controllers/ClientStateController";
@@ -32,6 +32,10 @@ import findItemsInRange from "client/utils/find-items-in-range";
 import { handleCloseButton as defaultHandleCloseButton } from "client/utils/menu-utils";
 import { VirtualizedScrollingFrame } from "../core/VirtualizedScrollingFrame";
 import { isLoadingAtom } from "client/utils/global-state";
+import {
+	collectUnavailableUserAssetIds,
+	inventorySlotToUserAssetId,
+} from "client/utils/collect-unavailable-stake-uaids";
 import { useAtom } from "@rbxts/react-charm";
 import { Item } from "typings/APIResponses";
 
@@ -55,6 +59,13 @@ interface Props {
 		autoSelectButtonVisible?: boolean;
 		confirmButtonEvent?: () => void;
 		showMinOrMax?: "min" | "max";
+		/**
+		 * When true (default in selection), copies unavailable for new stakes are excluded from counts and auto-select:
+		 * listed on the marketplace, committed to an active coinflip / jackpot, or a pending trade (for the inventory owner).
+		 */
+		excludeListedCopies?: boolean;
+		/** Whose listings to treat as locked (defaults to local player). Use when selecting from another user's inventory. */
+		listedCopiesSellerUserId?: string;
 	};
 }
 
@@ -201,6 +212,45 @@ function InventoryMenuComponent({
 		inventoryOverwrite ?? clientStateController.Inventory,
 	);
 	const inventory = liveInventory;
+
+	// Coinflips / jackpots / trades / listings mutate in place; bump revision when any affects stake availability.
+	const [selectionAvailabilityRevision, setSelectionAvailabilityRevision] = useState(0);
+	useEffect(() => {
+		const bump = () => setSelectionAvailabilityRevision((n) => n + 1);
+		const c1 = clientStateController.ListingsEvent.Connect(bump);
+		const c2 = clientStateController.CoinflipChangedEvent.Connect(bump);
+		const c3 = clientStateController.JackpotChangedEvent.Connect(bump);
+		const c4 = clientStateController.TradesChangedEvent.Connect(bump);
+		const c5 = clientStateController.InventoryChangedEvent.Connect(bump);
+		return () => {
+			c1.Disconnect();
+			c2.Disconnect();
+			c3.Disconnect();
+			c4.Disconnect();
+			c5.Disconnect();
+		};
+	}, [clientStateController]);
+
+	const gridInventory = useMemo(() => {
+		if (mode !== "selection" || selectionData?.excludeListedCopies === false) return inventory;
+		const ownerScope = selectionData?.listedCopiesSellerUserId ?? tostring(Players.LocalPlayer.UserId);
+		const unavailable = collectUnavailableUserAssetIds(clientStateController, ownerScope);
+		const filteredByListing = new Map<string, string[]>();
+		inventory.forEach((uaids, itemId) => {
+			filteredByListing.set(
+				itemId,
+				uaids.filter((slot) => !unavailable.has(inventorySlotToUserAssetId(slot))),
+			);
+		});
+		return filteredByListing;
+	}, [
+		mode,
+		selectionData?.excludeListedCopies,
+		selectionData?.listedCopiesSellerUserId,
+		inventory,
+		selectionAvailabilityRevision,
+		clientStateController,
+	]);
 	const px = usePx();
 	const pxScale = usePxScale();
 	const rowHeight = (px(145) + px(4)) * pxScale();
@@ -306,7 +356,7 @@ function InventoryMenuComponent({
 			}
 		}
 
-		inventory.forEach((copies, id) => {
+		gridInventory.forEach((copies, id) => {
 			const itemData = clientStateController.ItemInfo.get(id);
 			const value = itemData?.value ?? 0;
 
@@ -364,7 +414,7 @@ function InventoryMenuComponent({
 		));
 
 		return components;
-	}, [inventory, debouncedSearch, state.sortOrder, selectionData, onSelect, onHover, onLeave]);
+	}, [gridInventory, debouncedSearch, state.sortOrder, selectionData, onSelect, onHover, onLeave]);
 
 	const itemTiles = memoizedData;
 
@@ -443,7 +493,7 @@ function InventoryMenuComponent({
 		for (const [itemIdRaw, quantityRaw] of pairs(selectionData.currentSelection)) {
 			const itemId = tostring(itemIdRaw);
 			const quantity = tonumber(quantityRaw) ?? 0;
-			const ownedQuantity = inventory.get(itemId)?.size() ?? 0;
+			const ownedQuantity = gridInventory.get(itemId)?.size() ?? 0;
 			const clampedQuantity = math.min(quantity, ownedQuantity);
 
 			if (clampedQuantity > 0) {
@@ -458,7 +508,7 @@ function InventoryMenuComponent({
 		if (changed) {
 			selectionData.setCurrentSelection(nextSelection);
 		}
-	}, [mode, selectionData, inventory]);
+	}, [mode, selectionData, gridInventory]);
 
 	useEffect(() => {
 		if (!visible) {
@@ -637,7 +687,7 @@ function InventoryMenuComponent({
 								Activated: async () => {
 									if (selectionData?.autoSelectButtonMode === "max") {
 										selectionData?.setCurrentSelection(
-											buildMaxSelection(inventory, clientStateController.ItemInfo, selectionData),
+											buildMaxSelection(gridInventory, clientStateController.ItemInfo, selectionData),
 										);
 										return;
 									}
@@ -653,7 +703,7 @@ function InventoryMenuComponent({
 									selectionData?.setCurrentSelection(
 										buildSelectionFromItemIds(
 											itemIds,
-											inventory,
+											gridInventory,
 											clientStateController.ItemInfo,
 											selectionData,
 										),
@@ -690,7 +740,7 @@ function InventoryMenuComponent({
 					currentSelection={selectionData?.currentSelection}
 					addEvent={() => {
 						if (!selectionData) return;
-						const total_owned = inventory.get(state.selectedTile)?.size() ?? 0;
+						const total_owned = gridInventory.get(state.selectedTile)?.size() ?? 0;
 						let total_selected = 0;
 
 						for (const [_, value] of pairs(selectionData.currentSelection)) {
@@ -726,7 +776,7 @@ function InventoryMenuComponent({
 					}}
 					addButtonEnabled={
 						totalItemsSelected < (selectionData?.totalMaximum ?? 0) &&
-						(inventory.get(state.selectedTile)?.size() ?? 0) -
+						(gridInventory.get(state.selectedTile)?.size() ?? 0) -
 							(selectionData?.currentSelection[state.selectedTile] ?? 0) >
 							0
 					}

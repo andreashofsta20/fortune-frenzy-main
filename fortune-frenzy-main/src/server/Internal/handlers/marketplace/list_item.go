@@ -1,6 +1,8 @@
 package marketplace
 
 import (
+	"bytes"
+	"encoding/json"
 	"ffinternal-go/service"
 	"time"
 
@@ -20,11 +22,21 @@ func ListItem(c *fiber.Ctx) error {
 		Price  *float64 `json:"price"`
 		Expiry *int64   `json:"expiry"`
 	}
+	raw := bytes.TrimSpace(c.Body())
+	if len(raw) == 0 || bytes.Equal(raw, []byte("null")) || bytes.Equal(raw, []byte("[]")) {
+		raw = []byte("{}")
+	}
 	var body RequestBody
-	if err := c.BodyParser(&body); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Missing or invalid body",
-		})
+	if err := json.Unmarshal(raw, &body); err != nil {
+		var arr []json.RawMessage
+		if json.Unmarshal(raw, &arr) == nil {
+			raw = []byte("{}")
+			if err := json.Unmarshal(raw, &body); err != nil {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Missing or invalid body"})
+			}
+		} else {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Missing or invalid body"})
+		}
 	}
 
 	con, err := service.GetMariaDBConnection()

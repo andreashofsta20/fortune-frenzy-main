@@ -28,6 +28,7 @@ import {
 } from "client/utils/global-state";
 import { useAtom } from "@rbxts/react-charm";
 import { Players } from "@rbxts/services";
+import { isItemDirectShopPurchaseBlocked } from "shared/util/is-item-direct-shop-blocked";
 
 interface Props {
 	currentStatus: string;
@@ -154,7 +155,9 @@ export function MarketplaceItemPage({ currentStatus, visible, flashMenu }: Props
 	}, []);
 
 	const pageButtons = useMemo(() => {
-		if (!itemPageData.rawData || !itemPageData.rawData.data) return [];
+		const rawData = itemPageData.rawData;
+		const catalogItem = rawData?.data;
+		if (!rawData || !catalogItem) return [];
 		const localUserId = tostring(Players.LocalPlayer.UserId);
 		const hasOwnActiveListings = (itemPageData.listings ?? []).some((listing) => listing.seller_id === localUserId);
 
@@ -164,6 +167,9 @@ export function MarketplaceItemPage({ currentStatus, visible, flashMenu }: Props
 				itemPageData.ownedCopies?.size() === 0 &&
 				!hasOwnActiveListings
 			)
+				return undefined;
+
+			if (title === MARKETPLACE_ITEM_PAGE_BUY && isItemDirectShopPurchaseBlocked(catalogItem))
 				return undefined;
 
 			return (

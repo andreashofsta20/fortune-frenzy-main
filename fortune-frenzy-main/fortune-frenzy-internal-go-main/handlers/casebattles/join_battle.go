@@ -1,6 +1,7 @@
 package casebattles
 
 import (
+	"context"
 	"encoding/json"
 	"ffinternal-go/service"
 	"fmt"
@@ -108,50 +109,25 @@ func JoinBattle(c *fiber.Ctx) error {
 		ClientSeed:  body.ClientSeed,
 	}
 	if isBot {
-		newPlayer.ClientSeed = generateRandomClientSeed()
+		newPlayer.ClientSeed = fmt.Sprintf("%s_BOT_%d", battleID, body.Position)
 	}
 
 	battle.Players = append(battle.Players, newPlayer)
 	battle.PlayerPulls[userIDStr] = PlayerPull{Items: []PullItem{}, TotalValue: 0}
 	battle.UpdatedAt = time.Now().UnixMilli()
 
+	shouldStartRoundProgression := false
 	if len(battle.Players) >= totalNeeded {
-		caseDataMap, err := fetchCaseDataMap(ctx)
+		caseDataMap, err := fetchCaseDataMapForIDs(ctx, battle.Cases)
 		if err != nil {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to load case data"})
 		}
 
-		for _, player := range battle.Players {
-			pull, err := computePlayerPulls(player.ID, player.ClientSeed, battle.ServerSeed, battle.Cases, caseDataMap)
-			if err != nil {
-				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to compute pulls"})
-			}
-			battle.PlayerPulls[player.ID] = pull
+		if err := PrepareStartedCaseBattle(&battle, caseDataMap); err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to start battle: " + err.Error()})
 		}
 
-		now := time.Now().UnixMilli()
-		battle.Status = "in_progress"
-		battle.StartedAt = now
-
-		firstCaseID := ""
-		if len(battle.Cases) > 0 {
-			firstCaseID = battle.Cases[0]
-		}
-		battle.SpinData = SpinData{
-			CurrentCaseIndex: 0,
-			CaseID:           firstCaseID,
-			Progress:         fmt.Sprintf("1/%d", len(battle.Cases)),
-		}
-
-		stepDuration := int64(3800)
-		if battle.FastMode {
-			stepDuration = 2200
-		}
-		nextStepAt := now + stepDuration
-		battle.NextStepAt = &nextStepAt
-		battle.UpdatedAt = now
-
-		go StartRoundProgression(battleID)
+		shouldStartRoundProgression = battle.Status == "in_progress"
 	}
 
 	data, err := json.Marshal(battle)
@@ -163,8 +139,18 @@ func JoinBattle(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to save battle"})
 	}
 
+	if battle.Status == "completed" {
+		w := append([]WinnerInfo(nil), battle.WinnersInfo...)
+		go settleCaseBattleWinners(context.Background(), battleID, w)
+	}
+
+	// Progression must read the same in-progress snapshot we just persisted (avoids racing stale Redis).
+	if shouldStartRoundProgression {
+		go StartRoundProgression(battleID)
+	}
+
 	return c.JSON(fiber.Map{
 		"status": "OK",
-		"data":   battle,
+		"data":   redactCaseBattleForClient(battle),
 	})
 }

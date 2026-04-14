@@ -8,47 +8,35 @@ import (
 )
 
 func SetupCoinflipRoutes(app *fiber.App) {
-	coinflip := app.Group("/coinflip")
+	auth := middleware.Authorization(middleware.AuthTypeServerKey)
 
-	coinflip.Post("/create/:server_id",
-		middleware.Authorization(middleware.AuthTypeServerKey),
-		handlers.CreateCoinflip,
-	)
+	// Roblox Packeter uses GET /coinflips?server_id=... (see CoinflipService.ts)
+	app.Get("/coinflips", auth, handlers.GetCoinflips)
 
-	coinflip.Post("/cancel/:coinflip_id",
-		middleware.Authorization(middleware.AuthTypeServerKey),
-		handlers.CancelCoinflip,
-	)
+	coinflips := app.Group("/coinflip")
 
-	coinflip.Get("/",
-		middleware.Authorization(middleware.AuthTypeServerKey),
-		handlers.GetCoinflips,
-	)
+	// 🔹 Core CRUD
+	coinflips.Get("/", auth, handlers.GetCoinflips)
 
-	coinflip.Post("/join/:coinflip_id",
-		middleware.Authorization(middleware.AuthTypeServerKey),
-		handlers.JoinCoinflip,
-	)
+	coinflips.Post("/create/:server_id", auth, handlers.CreateCoinflip)
 
-	coinflip.Post("/start/:coinflip_id",
-		middleware.Authorization(middleware.AuthTypeServerKey),
-		handlers.StartCoinflip,
-	)
+	coinflips.Post("/join/:coinflip_id", auth, handlers.JoinCoinflip)
 
-	coinflip.Post("/call-bot/:coinflip_id",
-		middleware.Authorization(middleware.AuthTypeServerKey),
-		handlers.CallBot,
-	)
+	coinflips.Post("/start/:coinflip_id", auth, handlers.StartCoinflip)
 
-	coinflip.Post("/cleanup-completed",
-		middleware.Authorization(middleware.AuthTypeServerKey),
-		func(c *fiber.Ctx) error {
-			return c.JSON(fiber.Map{"status": "OK", "removed": 0})
-		},
-	)
+	coinflips.Post("/cancel/:coinflip_id", auth, handlers.CancelCoinflip)
 
-	app.Get("/coinflips",
-		middleware.Authorization(middleware.AuthTypeServerKey),
-		handlers.GetCoinflips,
-	)
+	// 🔹 Bot / automation (Roblox uses /call-bot/; keep /bot/ as alias)
+	coinflips.Post("/call-bot/:coinflip_id", auth, handlers.CallBot)
+	coinflips.Post("/bot/:coinflip_id", auth, handlers.CallBot)
+
+	// 🔹 Maintenance (Roblox uses hyphen, same as casebattles/cleanup-completed)
+	cleanupCompleted := func(c *fiber.Ctx) error {
+		return c.JSON(fiber.Map{
+			"status":  "ok",
+			"removed": 0,
+		})
+	}
+	coinflips.Post("/cleanup/completed", auth, cleanupCompleted)
+	coinflips.Post("/cleanup-completed", auth, cleanupCompleted)
 }

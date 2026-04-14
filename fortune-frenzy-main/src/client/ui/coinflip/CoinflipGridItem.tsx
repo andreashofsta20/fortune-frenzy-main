@@ -3,6 +3,7 @@ import { usePx } from "client/hooks/use-px";
 import { palette } from "client/utils/palette";
 import { Coinflip } from "typings/APIResponses";
 import { SectionStroke } from "../tools/SectionStroke";
+import { resolveStakeItemId } from "client/utils/trade-stake-token";
 import { Corner } from "../tools/Corner";
 import { TextLabel } from "../core/TextLabel";
 import { addCommasToNumber } from "shared/util/number-utils";
@@ -80,7 +81,7 @@ export function CoinflipGridItem({ coinflip, LayoutOrder, Activated }: Props) {
 	const coinflipInfo = useMemo(() => {
 		const calculateTotalValue = (items: string[]) => {
 			return items.reduce((acc, item) => {
-				const itemId = item.split(":")[1];
+				const itemId = resolveStakeItemId(item);
 				const itemData = clientStateController.ItemInfo.get(itemId);
 				return itemData ? acc + itemData.value : acc;
 			}, 0);
@@ -124,7 +125,7 @@ export function CoinflipGridItem({ coinflip, LayoutOrder, Activated }: Props) {
 				break;
 			}
 
-			const itemId = item.split(":")[1];
+			const itemId = resolveStakeItemId(item);
 			const itemData = clientStateController.ItemInfo.get(itemId);
 			if (itemData) {
 				itemPreviewTiles.push(

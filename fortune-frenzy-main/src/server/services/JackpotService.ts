@@ -8,38 +8,13 @@ import { JackpotData, JackpotPotsResponse } from "typings/APIResponses";
 import { Events } from "server/network";
 import getPollingCooldown from "server/util/get-polling-cooldown";
 import filterServerSeed from "server/util/jackpot/filterServerSeed";
-import { HttpService, ServerScriptService, Players } from "@rbxts/services";
+import { ServerScriptService, Players } from "@rbxts/services";
 import { GetUAIDsForOnlineInventory } from "server/util/get-uaid-from-quantity";
+import { formatStakeTokensWithItemIds } from "server/util/format-stake-tokens";
 import { ItemManagementService } from "./ItemManagementService";
+import { MarketplaceService } from "./MarketplaceService";
 import { JACKPOT_INFINITY_VALUE_CAP, normalizeJackpotValueCap } from "shared/util/jackpot-value-cap";
 import { GameEvents } from "server/util/cross-server-channels/GameEvents";
-
-declare const fetch: (url: string, init: defined) => Promise<unknown>;
-
-function emitAgentDebugLog(location: string, message: string, data: Record<string, unknown>, hypothesisId: string) {
-	// #region agent log
-	task.spawn(() => {
-		pcall(() =>
-			fetch("http://127.0.0.1:7528/ingest/1b6715ac-5dbe-4e21-b0fb-3326720d79ad", {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-					"X-Debug-Session-Id": "4ef876",
-				},
-				body: HttpService.JSONEncode({
-					sessionId: "4ef876",
-					location,
-					message,
-					data,
-					timestamp: DateTime.now().UnixTimestampMillis,
-					runId: "pre-fix",
-					hypothesisId,
-				}),
-			}),
-		);
-	});
-	// #endregion
-}
 
 @Service()
 export class JackpotService implements OnStart {
@@ -48,6 +23,7 @@ export class JackpotService implements OnStart {
 	constructor(
 		private PlayerManagementService: PlayerManagementService,
 		private ItemManagementService: ItemManagementService,
+		private marketplaceService: MarketplaceService,
 	) {}
 
 	public Jackpots = new Array<JackpotData>();
@@ -55,10 +31,6 @@ export class JackpotService implements OnStart {
 	async onStart(): Promise<void> {
 		const startTime = tick();
 		log("warn", "⌛ [JackpotService] Starting...");
-
-		Players.PlayerRemoving.Connect((player) => {
-			this.handlePlayerDisconnect(player);
-		});
 
 		this.subscribeToCrossServerEvents();
 		this.startJackpotPolling();
@@ -78,37 +50,6 @@ export class JackpotService implements OnStart {
 		});
 	}
 
-	private handlePlayerDisconnect(player: Player): void {
-		const userId = tostring(player.UserId);
-
-		for (const jackpot of this.Jackpots) {
-			if (jackpot.status !== "waiting_for_start") continue;
-
-			const isMember = jackpot.members.some((m) => m.player.id === userId);
-			if (!isMember) continue;
-
-			task.spawn(async () => {
-				try {
-					const { Code, Response } = await new Request("POST", `/jackpot/leave/${jackpot.id}`, undefined, {
-						user_id: player.UserId,
-					}).GetResponse();
-
-					if (Code === 200) {
-						const updatedPot = (Response as { pot?: JackpotData }).pot;
-						if (updatedPot) {
-							const index = this.Jackpots.findIndex((jp) => jp.id === updatedPot.id);
-							if (index !== -1) this.Jackpots[index] = updatedPot;
-							Events.JackpotsUpdated.broadcast({ updated: [filterServerSeed(updatedPot)], removed: [] });
-						}
-						log("print", `[JackpotService] Auto-left jackpot ${jackpot.id} for disconnected player ${userId}`);
-					}
-				} catch (err) {
-					log("warn", `[JackpotService] Failed to auto-leave jackpot ${jackpot.id} on disconnect: ${err}`);
-				}
-			});
-		}
-	}
-
 	private startJackpotPolling(): void {
 		task.spawn(async () => {
 			while (true) {
@@ -125,27 +66,21 @@ export class JackpotService implements OnStart {
 
 	async updateJackpots(): Promise<void> {
 		const { Code, Response } = await new Request("GET", "/jackpot/pots").GetResponse();
-		// #region agent log
-		emitAgentDebugLog(
-			"src/server/services/JackpotService.ts:124",
-			"jackpot poll response",
-			{
-				code: Code,
-				hasPotsArray: typeIs((Response as JackpotPotsResponse).pots, "table"),
-			},
-			"H4",
-		);
-		// #endregion
 		if (Code !== 200) {
 			log("warn", `[JackpotService] Failed to fetch jackpots. Status: ${Code}`);
 			return;
 		}
 		const { pots: rawPots } = Response as JackpotPotsResponse;
+		if (!typeIs(rawPots, "table")) {
+			log("warn", `[JackpotService] Invalid jackpots payload (missing pots array)`);
+			return;
+		}
 		const pots = rawPots.map((pot) => ({
 			...pot,
+			members: pot.members ?? [],
 			value_cap: normalizeJackpotValueCap(
 				pot.value_cap,
-				pot.is_system_pot === true || pot.creator.id === "0" ? 1000000 : JACKPOT_INFINITY_VALUE_CAP,
+				pot.is_system_pot === true || pot.creator?.id === "0" ? 1000000 : JACKPOT_INFINITY_VALUE_CAP,
 			),
 		}));
 		const oldById = new Map(this.Jackpots.map((p) => [p.id, p]));
@@ -174,9 +109,10 @@ export class JackpotService implements OnStart {
 	private handleJackpotComplete(pot: JackpotData) {
 		log("print", `[JackpotService] handleJackpotComplete: id=${pot.id}, status=${pot.status}, winnerId=${pot.winning_data?.player.id}`);
 		const winnerId = pot.winning_data?.player.id;
-		const totalPotValue = pot.members.reduce((sum, member) => sum + member.total_value, 0);
+		const members = pot.members ?? [];
+		const totalPotValue = members.reduce((sum, member) => sum + member.total_value, 0);
 
-		for (const member of pot.members) {
+		for (const member of members) {
 			const userId = tonumber(member.player.id);
 			if (!userId) continue;
 
@@ -207,7 +143,7 @@ export class JackpotService implements OnStart {
 		starting_after: number,
 	) {
 		for (const jackpot of this.Jackpots)
-			if (jackpot.creator.id === tostring(player.UserId) && jackpot.status !== "complete")
+			if (jackpot.creator?.id === tostring(player.UserId) && jackpot.status !== "complete")
 				return { status: "error", code: 400, message: "Already own an active jackpot" };
 
 		const { Code, Response } = await new Request("POST", "/jackpot/create", undefined, {
@@ -241,7 +177,7 @@ export class JackpotService implements OnStart {
 		let joinedActiveJackpots = 0;
 		for (const jackpot of this.Jackpots) {
 			if (jackpot.status === "complete" || jackpot.id === jackpot_id) continue;
-			for (const member of jackpot.members) {
+			for (const member of jackpot.members ?? []) {
 				if (member.player.id === tostring(player.UserId)) {
 					joinedActiveJackpots += 1;
 					break;
@@ -255,12 +191,13 @@ export class JackpotService implements OnStart {
 		let totalSelectedItems = 0;
 		for (const [, amount] of pairs(items)) totalSelectedItems += amount;
 
+		const listed = this.marketplaceService.getListedUserAssetIdsForSeller(tostring(player.UserId));
 		const selectUAIDs = () =>
-			GetUAIDsForOnlineInventory(this.ItemManagementService, this.PlayerManagementService, player, items);
+			GetUAIDsForOnlineInventory(this.ItemManagementService, this.PlayerManagementService, player, items, listed);
 		const joinWithUAIDs = (selectedUAIDsArray: string[]) =>
 			new Request("POST", `/jackpot/join/${jackpot_id}`, undefined, {
 				user_id: player.UserId,
-				items: selectedUAIDsArray,
+				items: formatStakeTokensWithItemIds(this.ItemManagementService, selectedUAIDsArray),
 				item_counts: items,
 				client_seed: player.GetAttribute("ClientSeed") as string,
 			}).GetResponse();
@@ -336,15 +273,16 @@ export class JackpotService implements OnStart {
 
 		const updatedPot = (joinResponse.Response as { pot?: JackpotData }).pot;
 		if (updatedPot) {
-			const index = this.Jackpots.findIndex((jp) => jp.id === updatedPot.id);
+			const normalized = { ...updatedPot, members: updatedPot.members ?? [] };
+			const index = this.Jackpots.findIndex((jp) => jp.id === normalized.id);
 			if (index !== -1) {
-				this.Jackpots[index] = updatedPot;
+				this.Jackpots[index] = normalized;
 			} else {
-				this.Jackpots.push(updatedPot);
+				this.Jackpots.push(normalized);
 			}
 
 			Events.JackpotsUpdated.broadcast({
-				updated: [filterServerSeed(updatedPot)],
+				updated: [filterServerSeed(normalized)],
 				removed: [],
 			});
 			GameEvents.publish("jackpot_update");
@@ -362,7 +300,7 @@ export class JackpotService implements OnStart {
 	async leaveJackpot(player: Player, jackpot_id: string) {
 		const currentJackpot = this.Jackpots.find((j) => j.id === jackpot_id);
 		if (!currentJackpot) return { status: "error", code: 400, message: "Jackpot not found" };
-		if (!currentJackpot.members.some((member) => member.player.id === tostring(player.UserId))) {
+		if (!(currentJackpot.members ?? []).some((member) => member.player.id === tostring(player.UserId))) {
 			return { status: "error", code: 400, message: "Not in jackpot" };
 		}
 
@@ -381,12 +319,13 @@ export class JackpotService implements OnStart {
 
 		const updatedPot = (Response as { pot?: JackpotData }).pot;
 		if (updatedPot) {
-			const index = this.Jackpots.findIndex((jp) => jp.id === updatedPot.id);
-			if (index !== -1) this.Jackpots[index] = updatedPot;
-			else this.Jackpots.push(updatedPot);
+			const normalized = { ...updatedPot, members: updatedPot.members ?? [] };
+			const index = this.Jackpots.findIndex((jp) => jp.id === normalized.id);
+			if (index !== -1) this.Jackpots[index] = normalized;
+			else this.Jackpots.push(normalized);
 
 			Events.JackpotsUpdated.broadcast({
-				updated: [filterServerSeed(updatedPot)],
+				updated: [filterServerSeed(normalized)],
 				removed: [],
 			});
 			GameEvents.publish("jackpot_update");

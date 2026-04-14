@@ -126,6 +126,23 @@ openssl rand -hex 32
 
 Set `DOMAIN` to your actual domain (e.g. `api.fortunefrenzy.xyz`).
 
+### MongoDB Atlas (wallet / offline cash)
+
+Optional. If you use MongoDB for player wallets, add to the same `.env` file:
+
+- `MONGODB_URI` — from Atlas **Connect → Drivers** (replace `<password>` with your **Database User** password from **Database Access**, not your Atlas login).
+- `MONGODB_DATABASE` — e.g. `fortune_frenzy` (must match what you intend; the app uses this database name for the `wallets` collection).
+
+**Database user permissions (required).** The API user must be allowed to read and write the `wallets` collection in that database. If you see errors like `not authorized on fortune_frenzy to execute command { find: "wallets"`, the user has no role on that DB.
+
+1. Atlas → **Database Access** → select your API user → **Edit**.
+2. Under **Built-in Role**, add **`readWrite`** on database **`fortune_frenzy`** (use the **exact** same name as `MONGODB_DATABASE` in `.env`).
+3. Do **not** rely on `readWrite@admin` only — that does not grant access to `fortune_frenzy.wallets`.
+
+In Atlas **Network Access**, add your **server’s public IP** (the Hetzner box), or the API cannot reach the cluster.
+
+After saving `.env`, redeploy the API so it picks up the new variables: `docker compose up -d --build` (from this folder). In logs you should see a line like **Connected to MongoDB (wallet)**. If `MONGODB_URI` is missing or wrong, the API still runs but wallets stay on MariaDB queues.
+
 Save and exit nano: `Ctrl+X`, then `Y`, then `Enter`.
 
 ---
@@ -183,7 +200,7 @@ In Roblox Studio:
    - **Type**: String
    - **Value**: `https://api.yourdomain.xyz`
 
-The game will now connect to your external backend instead of using local-backend.
+The game always uses your HTTP API (Packeter). If `_backend_url` is unset, it defaults to the URL in `InitializationService` (`PACKETER_BACKEND_URL_DEFAULT`). The old in-game `local-backend` mock has been removed; Studio needs a real API URL + `X_API_KEY` secret like production.
 
 ---
 
@@ -241,4 +258,16 @@ scp -r /Users/52hofand/Downloads/Fortune-frenzy/fortune-frenzy-main/fortune-fren
 # On the server:
 cd /root/fortune-frenzy
 docker compose up -d --build
+
+## REPLACE BACKEND
+rsync -avz --delete \
+  --exclude '.env' \
+  /Users/52hofand/Downloads/Fortune-frenzy/fortune-frenzy-main/fortune-frenzy-internal-go-main/ \
+  root@87.99.145.202:~/fortune-frenzy/
+
+
+## WIPE ALL DATA
+cd ~/fortune-frenzy
+USE_DOCKER_COMPOSE=1 ./scripts/wipe-all.sh --with-seeds
+
 ```

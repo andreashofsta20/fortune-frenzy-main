@@ -124,10 +124,14 @@ export class ItemManagementService implements OnInit {
 		if (this.findItemsInRangeLocks.has(player.UserId)) return [];
 		this.findItemsInRangeLocks.add(player.UserId);
 		try {
+			const maxFloored = math.floor(maxValue);
+			const maxValueQuery =
+				maxValue === math.huge || maxFloored > 9e15 ? "9223372036854775807" : tostring(maxFloored);
+
 			const request = new Request("GET", "/items/find_items_in_range", undefined, undefined, {
 				user_id: tostring(player.UserId),
 				minValue: tostring(math.floor(minValue)),
-				maxValue: tostring(math.floor(maxValue)),
+				maxValue: maxValueQuery,
 				minItems: tostring(math.floor(minItems)),
 				maxItems: tostring(math.floor(maxItems)),
 			});

@@ -30,6 +30,8 @@ export const selectionDataAtom = atom<
 			title?: string;
 			buttonText?: string;
 			autoSelectButtonVisible?: boolean;
+			/** When true, selection UI hides copies listed or in active coinflips / jackpots / pending trades. */
+			excludeListedCopies?: boolean;
 	  }
 	| undefined
 >(undefined);
@@ -79,6 +81,8 @@ export const jackpotSelectionDataAtom = atom<
 			autoSelectButtonMode?: "random" | "max";
 			autoSelectButtonText?: string;
 			autoSelectButtonVisible?: boolean;
+			/** When true, selection UI hides copies listed or in active coinflips / jackpots / pending trades. */
+			excludeListedCopies?: boolean;
 	  }
 	| undefined
 >(undefined);

@@ -25,7 +25,7 @@ function findLocalItemsInRange(
 	clientStateController.Inventory.forEach((copies, itemId) => {
 		const itemData = clientStateController.ItemInfo.get(itemId);
 		if (!itemData) return;
-		if (itemData.value <= 0 || itemData.value > normalizedMaxValue) return;
+		if (itemData.value < normalizedMinValue || itemData.value > normalizedMaxValue) return;
 
 		const quantity = math.min(copies.size(), normalizedMaxItems);
 		if (quantity <= 0) return;

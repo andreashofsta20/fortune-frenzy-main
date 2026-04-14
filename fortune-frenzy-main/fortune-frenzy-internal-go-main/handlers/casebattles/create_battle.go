@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math/big"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -61,13 +62,16 @@ type CaseBattleData struct {
 	Cases       []string              `json:"cases"`
 	PlayerPulls map[string]PlayerPull `json:"player_pulls"`
 	SpinData    SpinData              `json:"current_spin_data"`
-	WinnersInfo []WinnerInfo          `json:"winners_info,omitempty"`
-	Status      string                `json:"status"`
-	NextStepAt  *int64                `json:"next_step_at,omitempty"`
-	CreatedAt   int64                 `json:"created_at"`
-	StartedAt   int64                 `json:"started_at"`
-	CompletedAt int64                 `json:"completed_at"`
-	UpdatedAt   int64                 `json:"updated_at"`
+	// ResolvedPulls / ResolvedWinners mirror local-backend persistence; omitted once the battle completes.
+	ResolvedPulls   map[string]PlayerPull `json:"resolved_pulls,omitempty"`
+	ResolvedWinners []WinnerInfo          `json:"resolved_winners,omitempty"`
+	WinnersInfo     []WinnerInfo          `json:"winners_info,omitempty"`
+	Status          string                `json:"status"`
+	NextStepAt      *int64                `json:"next_step_at,omitempty"`
+	CreatedAt       int64                 `json:"created_at"`
+	StartedAt       int64                 `json:"started_at"`
+	CompletedAt     int64                 `json:"completed_at"`
+	UpdatedAt       int64                 `json:"updated_at"`
 }
 
 type CreateBattleRequest struct {
@@ -130,12 +134,6 @@ func generateServerSeed() (string, error) {
 	return hex.EncodeToString(hash[:]), nil
 }
 
-func generateRandomClientSeed() string {
-	b := make([]byte, 16)
-	rand.Read(b)
-	return hex.EncodeToString(b)
-}
-
 func secureRandInt(max int64) (int64, error) {
 	n, err := rand.Int(rand.Reader, big.NewInt(max))
 	if err != nil {
@@ -144,12 +142,17 @@ func secureRandInt(max int64) (int64, error) {
 	return n.Int64(), nil
 }
 
-// rollTicket picks an item from a case's items using a weighted random ticket (0-9999).
+// rollTicket picks an item using the same ticket space as local-backend pickCaseBattleItem:
+// math.random(1, 100000) → inclusive 1..100000 (we use secureRandInt(100000)+1).
+// DB/local seeds use min_ticket/max_ticket bands up to 99999 (and 100000 can fall through to fallback like Luau).
+// Previously this used 0..9999 only, so almost every band was missed and the last item (often ~1% rare) always won.
 func rollTicket(items []CaseBattleItem) (CaseBattleItem, int64, error) {
-	ticket, err := secureRandInt(10000)
+	n, err := secureRandInt(100000)
 	if err != nil {
 		return CaseBattleItem{}, 0, err
 	}
+	// Luau: math.random(1, 100000) — inclusive 1..100000
+	ticket := n + 1
 	for _, item := range items {
 		if ticket >= int64(item.MinTicket) && ticket <= int64(item.MaxTicket) {
 			return item, ticket, nil
@@ -196,15 +199,38 @@ func computePlayerPulls(playerID, clientSeed, serverSeed string, cases []string,
 	return pull, nil
 }
 
-func fetchCaseDataMap(ctx context.Context) (map[string]CaseBattleCase, error) {
+// fetchCaseDataMapForIDs loads only the rows needed for a battle (avoids full-table scans on join/start).
+func fetchCaseDataMapForIDs(ctx context.Context, caseIDs []string) (map[string]CaseBattleCase, error) {
+	seen := make(map[string]struct{})
+	var uniq []string
+	for _, id := range caseIDs {
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		uniq = append(uniq, id)
+	}
+	if len(uniq) == 0 {
+		return map[string]CaseBattleCase{}, nil
+	}
+
 	conn, err := service.GetMariaDBConnection()
 	if err != nil {
 		return nil, err
 	}
 	defer conn.Close()
 
-	rows, err := conn.QueryContext(ctx,
-		"SELECT id, name, slug, image, price, total_opened, created_at, items FROM case_battle_cases")
+	placeholders := make([]string, len(uniq))
+	args := make([]interface{}, len(uniq))
+	for i, id := range uniq {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	q := "SELECT id, name, slug, image, price, total_opened, created_at, items FROM case_battle_cases WHERE id IN (" + strings.Join(placeholders, ",") + ")"
+	rows, err := conn.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -242,7 +268,7 @@ func CreateBattle(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid team_mode"})
 	}
 
-	caseDataMap, err := fetchCaseDataMap(c.Context())
+	caseDataMap, err := fetchCaseDataMapForIDs(c.Context(), body.Cases)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to load case data"})
 	}

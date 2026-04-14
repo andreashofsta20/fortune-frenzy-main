@@ -5,40 +5,15 @@ import { PlayerManagementService } from "./PlayerManagementService";
 import { ItemManagementService } from "./ItemManagementService";
 import { Request } from "server/util/packeter";
 import { Events } from "server/network";
-import { HttpService, Players, ServerScriptService } from "@rbxts/services";
+import { Players, ServerScriptService } from "@rbxts/services";
 import { GetUAIDsForOnlineInventory } from "server/util/get-uaid-from-quantity";
+import { formatStakeTokensWithItemIds } from "server/util/format-stake-tokens";
+import { MarketplaceService } from "./MarketplaceService";
 import log from "shared/util/log";
 import { setDecimalPlaces } from "shared/util/number-utils";
 import getPollingCooldown from "server/util/get-polling-cooldown";
 import { getCoinflipJoinValueRange } from "shared/util/coinflip-join-range";
 import { GameEvents } from "server/util/cross-server-channels/GameEvents";
-
-declare const fetch: (url: string, init: defined) => Promise<unknown>;
-
-function emitAgentDebugLog(location: string, message: string, data: Record<string, unknown>, hypothesisId: string) {
-	// #region agent log
-	task.spawn(() => {
-		pcall(() =>
-			fetch("http://127.0.0.1:7528/ingest/1b6715ac-5dbe-4e21-b0fb-3326720d79ad", {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-					"X-Debug-Session-Id": "4ef876",
-				},
-				body: HttpService.JSONEncode({
-					sessionId: "4ef876",
-					location,
-					message,
-					data,
-					timestamp: DateTime.now().UnixTimestampMillis,
-					runId: "pre-fix",
-					hypothesisId,
-				}),
-			}),
-		);
-	});
-	// #endregion
-}
 
 @Service()
 export class CoinflipService implements OnStart {
@@ -50,6 +25,7 @@ export class CoinflipService implements OnStart {
 	constructor(
 		private PlayerManagementService: PlayerManagementService,
 		private ItemManagementService: ItemManagementService,
+		private marketplaceService: MarketplaceService,
 	) {}
 
 	public Coinflips = new Array<Coinflip>();
@@ -152,10 +128,6 @@ export class CoinflipService implements OnStart {
 		const start_time = tick();
 		log("warn", "⌛ [CoinflipService] Starting...");
 
-		Players.PlayerRemoving.Connect((player) => {
-			this.handlePlayerDisconnect(player);
-		});
-
 		this.subscribeToCrossServerEvents();
 
 		task.spawn(async () => {
@@ -166,18 +138,6 @@ export class CoinflipService implements OnStart {
 				const request = await new Request("GET", `/coinflips`, undefined, undefined, {
 					server_id: ServerScriptService.GetAttribute("server_id") as string,
 				}).GetResponse();
-				// #region agent log
-				emitAgentDebugLog(
-					"src/server/services/CoinflipService.ts:164",
-					"coinflip poll response",
-					{
-						code: request.Code,
-						success: request.Success,
-						hasCoinflipsArray: typeIs((request.Response as GetCoinflipsResponse).coinflips, "table"),
-					},
-					"H4",
-				);
-				// #endregion
 				if (request.Code !== 200) return;
 				const response = request.Response as GetCoinflipsResponse;
 				response.coinflips = response.coinflips.filter((cf) => !CoinflipService.locallyCleanedUpIds.has(cf.id));
@@ -304,12 +264,13 @@ export class CoinflipService implements OnStart {
 			return { status: "error", code: 400, message: "Cannot select more than 10 items" };
 		}
 
+		const listed = this.marketplaceService.getListedUserAssetIdsForSeller(tostring(player.UserId));
 		const selectUAIDs = () =>
-			GetUAIDsForOnlineInventory(this.ItemManagementService, this.PlayerManagementService, player, items);
+			GetUAIDsForOnlineInventory(this.ItemManagementService, this.PlayerManagementService, player, items, listed);
 		const createWithUAIDs = (selectedUAIDs: string[]) =>
 			new Request("POST", `/coinflip/create/${ServerScriptService.GetAttribute("server_id")}`, undefined, {
 				user_id: player.UserId,
-				items: selectedUAIDs,
+				items: formatStakeTokensWithItemIds(this.ItemManagementService, selectedUAIDs),
 				item_counts: items,
 				coin: coin === "Heads" ? 1 : 2,
 				type: "global",
@@ -542,27 +503,6 @@ export class CoinflipService implements OnStart {
 		}
 	}
 
-	private handlePlayerDisconnect(player: Player): void {
-		const userId = tostring(player.UserId);
-		for (const coinflip of this.Coinflips) {
-			if (coinflip.player1.id !== userId) continue;
-			if (coinflip.status !== "waiting_for_player") continue;
-
-			task.spawn(async () => {
-				try {
-					const request = await new Request("POST", `/coinflip/cancel/${coinflip.id}`).GetResponse();
-					if (request.Code === 200) {
-						this.Coinflips = this.Coinflips.filter((cf) => cf.id !== coinflip.id);
-						Events.CoinflipsUpdated.broadcast({ updated: [], removed: [coinflip.id] });
-						log("print", `[CoinflipService] Auto-cancelled coinflip ${coinflip.id} for disconnected player ${userId}`);
-					}
-				} catch (err) {
-					log("warn", `[CoinflipService] Failed to auto-cancel coinflip ${coinflip.id} on disconnect: ${err}`);
-				}
-			});
-		}
-	}
-
 	async joinCoinflip(
 		player: Player,
 		coinflipId: string,
@@ -597,12 +537,13 @@ export class CoinflipService implements OnStart {
 			};
 		}
 
+		const listed = this.marketplaceService.getListedUserAssetIdsForSeller(tostring(player.UserId));
 		const selectUAIDs = () =>
-			GetUAIDsForOnlineInventory(this.ItemManagementService, this.PlayerManagementService, player, items);
+			GetUAIDsForOnlineInventory(this.ItemManagementService, this.PlayerManagementService, player, items, listed);
 		const joinWithUAIDs = (selectedUAIDs: string[]) =>
 			new Request("POST", `/coinflip/join/${coinflipId}`, undefined, {
 				user_id: player.UserId,
-				items: selectedUAIDs,
+				items: formatStakeTokensWithItemIds(this.ItemManagementService, selectedUAIDs),
 				item_counts: items,
 			}).GetResponse();
 

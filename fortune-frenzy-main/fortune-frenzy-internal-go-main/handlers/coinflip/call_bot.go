@@ -48,6 +48,27 @@ func CallBot(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Already has a second player"})
 	}
 
+	db, err := service.GetMariaDBConnection()
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to connect to database"})
+	}
+	defer db.Close()
+
+	tx, err := db.BeginTx(c.Context(), nil)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to start transaction"})
+	}
+	defer tx.Rollback()
+
+	houseID := utilities.CoinflipHouseUserID()
+	botStakeItems, err := mintBotMirrorItemCopies(c.Context(), tx, userIDStr, houseID, cf.Player1Items)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
+	}
+	if err := tx.Commit(); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to commit bot stake"})
+	}
+
 	botID := "BOT_" + coinflipID
 	botName := "Bot"
 	cf.Player2 = &models.UserInfo{
@@ -55,7 +76,7 @@ func CallBot(c *fiber.Ctx) error {
 		Username:    &botName,
 		DisplayName: &botName,
 	}
-	cf.Player2Items = cf.Player1Items
+	cf.Player2Items = botStakeItems
 	cf.Status = "awaiting_confirmation"
 
 	data, _ := json.Marshal(cf)

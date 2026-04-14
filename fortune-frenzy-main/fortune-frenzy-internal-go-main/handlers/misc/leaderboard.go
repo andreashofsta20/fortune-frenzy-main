@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"ffinternal-go/service"
+	"ffinternal-go/utilities"
 	"fmt"
 	"log"
+	"strconv"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -54,8 +56,11 @@ func RefreshLeaderboard() {
 
 	ctx := context.Background()
 
+	excludeHouseID, _ := strconv.ParseInt(utilities.CoinflipHouseUserID(), 10, 64)
+
 	cashRows, err := db.QueryContext(ctx,
-		"SELECT user_id, name, display_name, current_cash, country FROM users ORDER BY current_cash DESC LIMIT 100",
+		"SELECT user_id, name, display_name, current_cash, country FROM users WHERE user_id != ? ORDER BY current_cash DESC LIMIT 100",
+		excludeHouseID,
 	)
 	if err != nil {
 		log.Printf("RefreshLeaderboard: failed to query cash leaderboard: %v", err)
@@ -75,7 +80,8 @@ func RefreshLeaderboard() {
 	}
 
 	valueRows, err := db.QueryContext(ctx,
-		"SELECT user_id, name, display_name, current_value, country FROM users ORDER BY current_value DESC LIMIT 100",
+		"SELECT user_id, name, display_name, current_value, country FROM users WHERE user_id != ? ORDER BY current_value DESC LIMIT 100",
+		excludeHouseID,
 	)
 	if err != nil {
 		log.Printf("RefreshLeaderboard: failed to query value leaderboard: %v", err)

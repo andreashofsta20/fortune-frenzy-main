@@ -19,6 +19,8 @@ interface Props {
 export function ItemPageInfoSection({ data }: Props) {
 	const px = usePx();
 	const pxScale = usePxScale();
+	const displayName = data?.data.name !== undefined && data.data.name !== "" ? data.data.name : "Unknown";
+	const subtitleText = "Limited Collectible";
 
 	return (
 		<frame
@@ -51,26 +53,28 @@ export function ItemPageInfoSection({ data }: Props) {
 					TextColor3: palette.primaryText,
 					AutomaticSize: Enum.AutomaticSize.Y,
 					Size: new UDim2(0, px(163), 0, 0),
-					Text: data?.data.name || "Unknown",
+					Text: displayName,
 					TextSize: px(23),
 					LayoutOrder: 2,
 				}}
 			/>
-			<TextLabel
-				typeface="Sans"
-				weight="Medium"
-				native={{
-					TextColor3: palette.midText,
-					AutomaticSize: Enum.AutomaticSize.Y,
-					Size: new UDim2(0, px(157), 0, 0),
-					Text: data?.data.description || "Unknown",
-					TextSize: px(18),
-					LayoutOrder: 4,
-					TextTruncate: Enum.TextTruncate.AtEnd,
-				}}
-			>
-				<uisizeconstraint MaxSize={new Vector2(math.huge, px(120) * pxScale())} />
-			</TextLabel>
+			{data !== undefined ? (
+				<TextLabel
+					typeface="Sans"
+					weight="Medium"
+					native={{
+						TextColor3: palette.midText,
+						AutomaticSize: Enum.AutomaticSize.Y,
+						Size: new UDim2(0, px(157), 0, 0),
+						Text: subtitleText,
+						TextSize: px(18),
+						LayoutOrder: 4,
+						TextTruncate: Enum.TextTruncate.AtEnd,
+					}}
+				>
+					<uisizeconstraint MaxSize={new Vector2(math.huge, px(120) * pxScale())} />
+				</TextLabel>
+			) : undefined}
 		</frame>
 	);
 }

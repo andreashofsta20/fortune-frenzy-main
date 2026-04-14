@@ -25,6 +25,7 @@ import {
 	finishTutorialFlow,
 	tutorialCompletionRequestAtom,
 } from "client/tutorial/tutorial-state";
+import { COINFLIP_HOUSE_USER_ID } from "shared/util/coinflip-house";
 
 type PendingUpdateValue =
 	| number
@@ -297,13 +298,17 @@ export class ClientStateController implements OnStart {
 			}
 		}
 
+		const filteredForDisplay = orderedResults.filter(
+			(e) => e.id !== COINFLIP_HOUSE_USER_ID && string.find(e.display_name, "Coinflip House")[0] === undefined,
+		);
+
 		this.PlayerSearchCache.set(cacheKey, {
-			data: orderedResults,
+			data: filteredForDisplay,
 			expiry: tick() + 20,
 		});
 
 		task.delay(20, () => this.PlayerSearchCache.delete(cacheKey));
-		return orderedResults;
+		return filteredForDisplay;
 	}
 
 	// ----------------------------------------------------------------

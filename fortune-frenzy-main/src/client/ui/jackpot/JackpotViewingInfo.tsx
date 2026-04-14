@@ -38,12 +38,24 @@ export function JackpotViewingInfo({ jackpot, playerSliceInfo }: Props) {
 
 	// Prepare a flattened and value-sorted list of all items in the pot (highest value first)
 	const sortedItems = useMemo(() => {
-		const itemInfo = Modding.resolveSingleton(ClientStateController).ItemInfo;
+		const csc = Modding.resolveSingleton(ClientStateController);
+		const itemInfo = csc.ItemInfo;
+		const inventory = csc.Inventory;
 		const combined: { item: string; owner: string; value: number }[] = [];
+
+		const resolveItemId = (stakeToken: string) => {
+			const parts = stakeToken.split(":");
+			if (parts.size() >= 2) return parts[1];
+			for (const [itemId, uaids] of inventory) {
+				if (uaids.includes(stakeToken)) return itemId;
+			}
+			return undefined;
+		};
+
 		jackpot.members.forEach((member) => {
 			member.items.forEach((item) => {
-				const itemId = item.split(":")[1];
-				const value = itemInfo.get(itemId)?.value ?? 0;
+				const itemId = resolveItemId(item);
+				const value = itemId !== undefined ? (itemInfo.get(itemId)?.value ?? 0) : 0;
 				combined.push({ item, owner: member.player.username, value });
 			});
 		});

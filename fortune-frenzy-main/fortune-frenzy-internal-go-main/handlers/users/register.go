@@ -1,6 +1,8 @@
 package users
 
 import (
+	"log"
+
 	"ffinternal-go/service"
 
 	"github.com/gofiber/fiber/v2"
@@ -35,6 +37,7 @@ func RegisterUser(c *fiber.Ctx) error {
 		userID, body.Name, body.DisplayName, body.Country,
 	)
 	if err != nil {
+		log.Printf("[RegisterUser] user_id=%s: %v", userID, err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to register user"})
 	}
 

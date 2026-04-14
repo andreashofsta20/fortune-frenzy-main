@@ -241,9 +241,10 @@ export const BattlePlayer = memo(
 				if (caseItems.size() === 0) return undefined;
 
 				const matchingLayoutOrders = new Array<number>();
+				const targetId = tostring(currentPull.id);
 				for (let i = 0; i < 150; i++) {
 					const mappedItem = caseItems[i % caseItems.size()];
-					if ((mappedItem?.id ?? "") === currentPull.id && i > 15) {
+					if (tostring(mappedItem?.id) === targetId && i > 15) {
 						matchingLayoutOrders.push(i);
 					}
 				}
@@ -314,6 +315,7 @@ export const BattlePlayer = memo(
 			currentCaseIndex,
 			currentCaseData?.id,
 			battleData.next_step_at,
+			battleData.status,
 			playerData?.id,
 		]);
 

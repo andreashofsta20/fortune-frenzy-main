@@ -47,7 +47,7 @@ func GetTrades(c *fiber.Ctx) error {
 	placeholders := "?" + strings.Repeat(",?", len(userIDs)-1)
 	query := "SELECT id, initiator_id, receiver_id, initiator_items, receiver_items, status, created_at, updated_at, transfer_id " +
 		"FROM trades WHERE (initiator_id IN (" + placeholders + ") OR receiver_id IN (" + placeholders + ")) " +
-		"AND status IN ('pending','accepted')"
+		"AND status IN ('pending','accepted','declined','cancelled','failed')"
 
 	args := make([]any, 0, len(userIDs)*2)
 	iface := utilities.ToInterfaceSlice(userIDs)
@@ -121,12 +121,20 @@ func GetTrades(c *fiber.Ctx) error {
 		initiator := userMap[t.InitiatorID]
 		var initItems []string
 		_ = json.Unmarshal([]byte(t.InitiatorItems), &initItems)
-		initiator.Items = initItems
+		if enriched, err := utilities.EnrichStakeTokensToDisplay(c.Context(), db, initItems); err == nil {
+			initiator.Items = enriched
+		} else {
+			initiator.Items = initItems
+		}
 
 		receiver := userMap[t.ReceiverID]
 		var recvItems []string
 		_ = json.Unmarshal([]byte(t.ReceiverItems), &recvItems)
-		receiver.Items = recvItems
+		if enriched, err := utilities.EnrichStakeTokensToDisplay(c.Context(), db, recvItems); err == nil {
+			receiver.Items = enriched
+		} else {
+			receiver.Items = recvItems
+		}
 
 		trades = append(trades, tradeResponse{
 			TradeID:    t.TradeID,

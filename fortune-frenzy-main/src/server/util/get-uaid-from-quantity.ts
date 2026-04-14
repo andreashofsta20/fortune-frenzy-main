@@ -7,6 +7,7 @@ export function GetUAIDsForOnlineInventory(
 	PlayerManagementService: PlayerManagementService,
 	player: Player,
 	items: Record<string, number>,
+	excludedUAIDs?: Set<string>,
 ): string[] {
 	const profile = PlayerManagementService.getSessionOnlyProfile(player);
 	if (!profile) return [];
@@ -19,18 +20,21 @@ export function GetUAIDsForOnlineInventory(
 			return info ? info[0] : "";
 		},
 		(uaid) => uaid,
+		excludedUAIDs,
 	);
 }
 
 export function GetUAIDsForOfflineInventory(
 	inventory: [string, string, string, string][],
 	items: Record<string, number>,
+	excludedUAIDs?: Set<string>,
 ): string[] {
 	return selectUAIDs(
 		inventory,
 		items,
 		(entry) => entry[0],
 		(entry) => entry[1],
+		excludedUAIDs,
 	);
 }
 
@@ -39,6 +43,7 @@ function selectUAIDs<S>(
 	itemsNeeded: Record<string, number>,
 	getItemId: (source: S) => string,
 	getUAID: (source: S) => string,
+	excludedUAIDs?: Set<string>,
 ): string[] {
 	let totalNeeded = 0;
 	for (const [, qty] of pairs(itemsNeeded)) {
@@ -53,10 +58,13 @@ function selectUAIDs<S>(
 		const itemId = getItemId(entry);
 		if (!(itemId in itemsNeeded)) continue;
 
+		const uaid = getUAID(entry);
+		if (excludedUAIDs?.has(uaid)) continue;
+
 		selectedCount[itemId] ??= 0;
 		if (selectedCount[itemId] < itemsNeeded[itemId]) {
 			selectedCount[itemId] += 1;
-			results.push(getUAID(entry));
+			results.push(uaid);
 
 			if (results.size() >= totalNeeded) break;
 		}

@@ -21,7 +21,7 @@ func GetAllItems(c *fiber.Ctx) error {
 	}
 	defer conn.Close()
 
-	rows, err := conn.QueryContext(c.Context(), "SELECT id, asset_id, name, creator, description, average_price, total_unboxed, maximum_copies, value, created_at, updated_at, color, category FROM items")
+	rows, err := conn.QueryContext(c.Context(), catalogItemsSelect)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
@@ -30,9 +30,11 @@ func GetAllItems(c *fiber.Ctx) error {
 	items := make([]models.Item, 0)
 	for rows.Next() {
 		var item models.Item
-		if err := rows.Scan(&item.ID, &item.AssetID, &item.Name, &item.Creator, &item.Description, &item.AveragePrice, &item.TotalUnboxed, &item.MaximumCopies, &item.Value, &item.CreatedAt, &item.UpdatedAt, &item.Color, &item.Category); err != nil {
+		var allowShop int8
+		if err := rows.Scan(&item.ID, &item.AssetID, &item.Name, &item.Creator, &item.Description, &item.AveragePrice, &item.TotalUnboxed, &item.MaximumCopies, &item.Value, &item.CreatedAt, &item.UpdatedAt, &item.Color, &item.Category, &item.CopiesInCirculation, &allowShop); err != nil {
 			continue
 		}
+		item.AllowDirectShopPurchase = int(allowShop)
 		items = append(items, item)
 	}
 	if err = rows.Err(); err != nil {
@@ -73,7 +75,7 @@ func getMonitoredItems(c *fiber.Ctx) error {
 
 	rows, err := conn.QueryContext(
 		ctx,
-		"SELECT id, asset_id, name, creator, description, average_price, total_unboxed, maximum_copies, value, created_at, updated_at, color, category FROM items WHERE updated_at > ? ORDER BY updated_at ASC",
+		catalogItemsSelect+" WHERE i.updated_at > ? ORDER BY i.updated_at ASC",
 		lastSeen,
 	)
 	if err != nil {
@@ -84,9 +86,11 @@ func getMonitoredItems(c *fiber.Ctx) error {
 	items := make([]models.Item, 0)
 	for rows.Next() {
 		var item models.Item
-		if err := rows.Scan(&item.ID, &item.AssetID, &item.Name, &item.Creator, &item.Description, &item.AveragePrice, &item.TotalUnboxed, &item.MaximumCopies, &item.Value, &item.CreatedAt, &item.UpdatedAt, &item.Color, &item.Category); err != nil {
+		var allowShop int8
+		if err := rows.Scan(&item.ID, &item.AssetID, &item.Name, &item.Creator, &item.Description, &item.AveragePrice, &item.TotalUnboxed, &item.MaximumCopies, &item.Value, &item.CreatedAt, &item.UpdatedAt, &item.Color, &item.Category, &item.CopiesInCirculation, &allowShop); err != nil {
 			continue
 		}
+		item.AllowDirectShopPurchase = int(allowShop)
 		items = append(items, item)
 	}
 	if err = rows.Err(); err != nil {

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"ffinternal-go/service"
 	"ffinternal-go/utilities"
+	"strconv"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -53,6 +54,26 @@ func CreateTrade(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "One or both users not found"})
 	}
 
+	if err := utilities.VerifyItemCopiesOwned(c.Context(), db, initiatorIDStr, body.InitiatorItems); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid initiator items"})
+	}
+	if err := utilities.VerifyItemCopiesOwned(c.Context(), db, receiverIDStr, body.ReceiverItems); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid receiver items"})
+	}
+
+	initUA := utilities.MapItemsToIDs(body.InitiatorItems)
+	recvUA := utilities.MapItemsToIDs(body.ReceiverItems)
+	allStakeUA := append(append([]string{}, initUA...), recvUA...)
+	if len(allStakeUA) > 0 {
+		listed, lerr := utilities.AnyItemsListed(c.Context(), db, allStakeUA)
+		if lerr != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": lerr.Error()})
+		}
+		if listed {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "An item is listed on the marketplace"})
+		}
+	}
+
 	initiatorItemsJSON, _ := json.Marshal(body.InitiatorItems)
 	receiverItemsJSON, _ := json.Marshal(body.ReceiverItems)
 
@@ -65,6 +86,14 @@ func CreateTrade(c *fiber.Ctx) error {
 	}
 
 	tradeID, _ := result.LastInsertId()
+
+	if len(allStakeUA) > 0 {
+		redis := service.GetRedisConnection()
+		if err := utilities.LockItemStakes(c.Context(), redis, allStakeUA, "trade:"+strconv.FormatInt(tradeID, 10), utilities.TradeStakeTTLSeconds); err != nil {
+			_, _ = db.ExecContext(c.Context(), "DELETE FROM trades WHERE id = ?", tradeID)
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Item already in use"})
+		}
+	}
 
 	userMap := make(map[string]tradeUserInfo)
 	for _, u := range userInfos {

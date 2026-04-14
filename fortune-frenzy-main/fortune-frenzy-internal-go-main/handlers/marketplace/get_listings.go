@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"ffinternal-go/service"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -47,8 +48,8 @@ func GetListings(c *fiber.Ctx) error {
 		Currency    string     `json:"currency"`
 		CreatedAt   time.Time  `json:"created_at"`
 		ExpiresAt   *time.Time `json:"expires_at,omitempty"`
-		Username    *string    `json:"username,omitempty"`
-		DisplayName *string    `json:"display_name,omitempty"`
+		Username    string     `json:"username"`
+		DisplayName string     `json:"display_name"`
 	}
 
 	listings := make([]ListingEntry, 0)
@@ -60,11 +61,13 @@ func GetListings(c *fiber.Ctx) error {
 			continue
 		}
 		l.Price = strconv.FormatInt(price, 10)
-		if username.Valid {
-			l.Username = &username.String
+		l.Username = "Unknown"
+		if username.Valid && strings.TrimSpace(username.String) != "" {
+			l.Username = username.String
 		}
-		if displayName.Valid {
-			l.DisplayName = &displayName.String
+		l.DisplayName = "Unknown"
+		if displayName.Valid && strings.TrimSpace(displayName.String) != "" {
+			l.DisplayName = displayName.String
 		}
 		listings = append(listings, l)
 	}
