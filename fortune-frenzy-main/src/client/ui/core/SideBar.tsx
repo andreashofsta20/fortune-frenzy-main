@@ -10,9 +10,11 @@ import { peek } from "@rbxts/charm";
 import { activeMenuAtom } from "client/utils/global-state"; // Added for peek in onClick
 import {
 	TutorialActionId,
+	TUTORIAL_STEPS,
 	TUTORIAL_TARGET_IDS,
 	advanceTutorialAction,
 	isTutorialInteractionBlocked,
+	tutorialStateAtom,
 } from "client/tutorial/tutorial-state";
 
 interface Props {
@@ -28,14 +30,17 @@ export function SideBar({ buttons, currencies }: Props) {
 	const [visible, setVisible] = useState(false);
 
 	const getTutorialActionForMenu = (menuName: string): TutorialActionId | undefined => {
-		switch (menuName) {
-			case "Minigames":
-				return "open_minigames_menu";
-			case "Inventory":
-				return "open_inventory_menu";
-			default:
-				return undefined;
+		if (menuName === "Marketplace") return "open_marketplace_menu";
+		if (menuName === "Inventory") return "open_inventory_menu";
+		if (menuName === "Minigames") {
+			const state = peek(tutorialStateAtom);
+			if (!state.active) return undefined;
+			const step = TUTORIAL_STEPS[state.stepIndex];
+			if (step?.actionId === "open_minigames_menu_coinflip") return "open_minigames_menu_coinflip";
+			if (step?.actionId === "open_minigames_menu") return "open_minigames_menu";
+			return undefined;
 		}
+		return undefined;
 	};
 
 	const getTutorialTargetForMenu = (menuName: string) => {
@@ -44,6 +49,8 @@ export function SideBar({ buttons, currencies }: Props) {
 				return TUTORIAL_TARGET_IDS.sidebarMinigames;
 			case "Inventory":
 				return TUTORIAL_TARGET_IDS.sidebarInventory;
+			case "Marketplace":
+				return TUTORIAL_TARGET_IDS.sidebarMarketplace;
 			default:
 				return undefined;
 		}

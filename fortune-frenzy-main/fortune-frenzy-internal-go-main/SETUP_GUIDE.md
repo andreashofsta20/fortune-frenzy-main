@@ -270,4 +270,10 @@ rsync -avz --delete \
 cd ~/fortune-frenzy
 USE_DOCKER_COMPOSE=1 ./scripts/wipe-all.sh --with-seeds
 
+##GIVE CASH
+docker run --rm mongo:7 mongosh "$MONGODB_URI" --eval 'db.getSiblingDB("fortune_frenzy").wallets.updateOne(
+  { _id: "3353659057" },
+  { $set: { cash: 50000, updated_at: Date.now() }, $setOnInsert: { gems: 0, created_at: Date.now() } },
+  { upsert: true }
+)'
 ```

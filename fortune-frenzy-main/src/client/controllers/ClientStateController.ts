@@ -422,9 +422,17 @@ export class ClientStateController implements OnStart {
 
 		const shouldShowTutorial = tutorialState !== -1 ? tutorialState.should_show : false;
 		const tutorialCompleted = tutorialState !== -1 ? tutorialState.completed : false;
+		const tutorialRewardPreview = tutorialState !== -1 ? tutorialState.reward_preview : undefined;
 
 		// Apply tutorial state but do NOT auto-start the flow yet
-		applyTutorialServerState({ completed: tutorialCompleted, shouldShow: shouldShowTutorial }, false);
+		applyTutorialServerState(
+			{
+				completed: tutorialCompleted,
+				shouldShow: shouldShowTutorial,
+				rewardPreview: tutorialRewardPreview,
+			},
+			false,
+		);
 
 		// Always open the daily reward popup when joining
 		activeMenuAtom("DailyReward");
@@ -433,8 +441,8 @@ export class ClientStateController implements OnStart {
 		if (shouldShowTutorial && !tutorialCompleted) {
 			const connection = subscribe(activeMenuAtom, (menuName) => {
 				if (menuName !== "DailyReward") {
-					import("client/tutorial/tutorial-state").then(({ startTutorialFlow }) => {
-						startTutorialFlow();
+					import("client/tutorial/tutorial-state").then(({ openTutorialOffer }) => {
+						openTutorialOffer();
 					});
 					connection(); // Unsubscribe
 				}
@@ -491,7 +499,6 @@ export class ClientStateController implements OnStart {
 						: `<font color="#${palette.profitGreen.ToHex()}">Rewards claimed</font>`;
 
 				this.NotificationEvent.Fire(`Tutorial complete! Bonus unlocked: ${rewardText}`);
-				activeMenuAtom("Inventory");
 				isNavigationVisibleAtom(true);
 			});
 		});
@@ -601,19 +608,36 @@ export class ClientStateController implements OnStart {
 			GetSubscriptionProductInfoAsync?: (subscriptionId: string) => SubscriptionInfo;
 		};
 
-		if (marketplaceWithSubscriptions.GetSubscriptionProductInfoAsync !== undefined) {
-			this.RobuxProducts.Subscriptions.forEach((subscriptionId) => {
-				if (this.ProductInfo.has(subscriptionId)) return;
+		const loadSubscriptionInfo = (subscriptionId: string) => {
+			if (this.ProductInfo.has(subscriptionId)) return;
 
-				const [success, info] = pcall(() =>
-					marketplaceWithSubscriptions.GetSubscriptionProductInfoAsync!(subscriptionId),
-				) as LuaTuple<[boolean, SubscriptionInfo]>;
-
+			const loader = marketplaceWithSubscriptions.GetSubscriptionProductInfoAsync;
+			if (loader !== undefined) {
+				const [success, info] = pcall(() => loader(subscriptionId)) as LuaTuple<[boolean, SubscriptionInfo]>;
 				if (success && typeIs(info, "table")) {
 					this.ProductInfo.set(subscriptionId, info);
+					return;
 				}
-			});
-		}
+			}
+
+			// Live game should always resolve; Studio / older engines may not — still show VIP so purchase works.
+			this.ProductInfo.set(
+				subscriptionId,
+				{
+					Name: "VIP",
+					Description: "",
+					PriceInRobux: 1000,
+					PriceTier: 0,
+					DisplayPrice: "\u{E002}1,000",
+					DisplaySubscriptionPeriod: " / month",
+					IconImageAssetId: 0,
+				} as unknown as SubscriptionInfo,
+			);
+		};
+
+		this.RobuxProducts.Subscriptions.forEach((subscriptionProductId) => {
+			loadSubscriptionInfo(subscriptionProductId);
+		});
 	}
 
 	private fireInitialEvents() {

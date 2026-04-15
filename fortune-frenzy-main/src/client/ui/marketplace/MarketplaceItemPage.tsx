@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useCallback } from "@rbxts/react";
+import React, { useEffect, useMemo, useState, useCallback, useRef } from "@rbxts/react";
 import { usePx } from "client/hooks/use-px";
 import { palette } from "client/utils/palette";
 import { CloseButton } from "../core/CloseButton";
@@ -28,7 +28,18 @@ import {
 } from "client/utils/global-state";
 import { useAtom } from "@rbxts/react-charm";
 import { Players } from "@rbxts/services";
+import { requestServer } from "client/utils/send-function";
+import { Functions } from "client/network";
 import { isItemDirectShopPurchaseBlocked } from "shared/util/is-item-direct-shop-blocked";
+import { peek } from "@rbxts/charm";
+import {
+	TUTORIAL_STEPS,
+	advanceTutorialAction,
+	registerTutorialTarget,
+	tutorialStateAtom,
+	unregisterTutorialTarget,
+	TUTORIAL_TARGET_IDS,
+} from "client/tutorial/tutorial-state";
 
 interface Props {
 	currentStatus: string;
@@ -69,6 +80,7 @@ export function MarketplaceItemPage({ currentStatus, visible, flashMenu }: Props
 		);
 	}, [pageOrder]);
 	const backButtonContext = useAtom(marketplaceBackContextAtom);
+	const tutorialSnap = useAtom(tutorialStateAtom);
 
 	useEffect(() => {
 		if (currentStatus === "none") return;
@@ -81,10 +93,37 @@ export function MarketplaceItemPage({ currentStatus, visible, flashMenu }: Props
 			setItemPageData((prev) => ({ ...prev, rawData: { data, rarity } }));
 		}
 
+		let pollAlive = true;
+		const refreshCatalogRow = () => {
+			task.spawn(async () => {
+				const result = await requestServer(
+					Functions.Marketplace.RefreshMarketplaceItemFromApi,
+					"Failed to refresh item stats",
+					id,
+				);
+				if (result === -1 || result === undefined) return;
+				const updatedRarity = getRarity(result.value || 0);
+				setItemPageData((prev) => ({
+					...prev,
+					rawData: { data: result, rarity: updatedRarity },
+				}));
+			});
+		};
+
+		refreshCatalogRow();
+		task.spawn(() => {
+			while (pollAlive) {
+				task.wait(25);
+				if (!pollAlive) break;
+				refreshCatalogRow();
+			}
+		});
+
 		const handleListingsUpdate = (itemID: string) => {
 			if (id === itemID) {
 				const updatedListings = clientStateController.ItemListings.get(id);
 				setItemPageData((prev) => ({ ...prev, listings: updatedListings || [] }));
+				refreshCatalogRow();
 			}
 		};
 
@@ -124,6 +163,7 @@ export function MarketplaceItemPage({ currentStatus, visible, flashMenu }: Props
 		activeMarketplacePageAtom(MARKETPLACE_ITEM_PAGE_RESELLERS);
 
 		return () => {
+			pollAlive = false;
 			listingsUpdateConnection.Disconnect();
 			inventoryUpdateConnection.Disconnect();
 			itemInfoUpdateConnection.Disconnect();
@@ -154,6 +194,30 @@ export function MarketplaceItemPage({ currentStatus, visible, flashMenu }: Props
 		activeMarketplacePageAtom(title);
 	}, []);
 
+	const tutorialBlocksNonBuyTab = useCallback((title: string) => {
+		const tut = peek(tutorialStateAtom);
+		if (!tut.active) return false;
+		const id = TUTORIAL_STEPS[tut.stepIndex]?.actionId;
+		if (
+			id === "marketplace_open_buy_tab" ||
+			id === "marketplace_click_direct_purchase" ||
+			id === "marketplace_confirm_direct_buy"
+		) {
+			return title !== MARKETPLACE_ITEM_PAGE_BUY;
+		}
+		return false;
+	}, []);
+
+	const buyTabButtonRef = useRef<TextButton | undefined>(undefined);
+
+	useEffect(() => {
+		const stepId = TUTORIAL_STEPS[tutorialSnap.stepIndex]?.actionId;
+		const el = buyTabButtonRef.current;
+		if (!el || !tutorialSnap.active || stepId !== "marketplace_open_buy_tab") return;
+		registerTutorialTarget(TUTORIAL_TARGET_IDS.marketplaceBuyTab, el);
+		return () => unregisterTutorialTarget(TUTORIAL_TARGET_IDS.marketplaceBuyTab, el);
+	}, [tutorialSnap.active, tutorialSnap.stepIndex, currentPage, currentStatus, itemPageData.rawData]);
+
 	const pageButtons = useMemo(() => {
 		const rawData = itemPageData.rawData;
 		const catalogItem = rawData?.data;
@@ -174,6 +238,13 @@ export function MarketplaceItemPage({ currentStatus, visible, flashMenu }: Props
 
 			return (
 				<textbutton
+					ref={
+						title === MARKETPLACE_ITEM_PAGE_BUY
+							? (el: TextButton | undefined) => {
+									buyTabButtonRef.current = el;
+								}
+							: undefined
+					}
 					FontFace={new Font(FONTS.Sans, Enum.FontWeight.Bold, Enum.FontStyle.Normal)}
 					TextColor3={currentPage === title ? palette.primaryText : palette.darkerText}
 					TextSize={px(23)}
@@ -182,13 +253,33 @@ export function MarketplaceItemPage({ currentStatus, visible, flashMenu }: Props
 					Text={capitalizeFirstChar(title)}
 					BackgroundTransparency={1}
 					LayoutOrder={index}
+					Selectable={!tutorialBlocksNonBuyTab(title)}
+					Active={!tutorialBlocksNonBuyTab(title)}
 					Event={{
-						Activated: () => handlePageChange(title),
+						Activated: () => {
+							if (tutorialBlocksNonBuyTab(title)) return;
+							handlePageChange(title);
+							const tut = peek(tutorialStateAtom);
+							if (
+								tut.active &&
+								TUTORIAL_STEPS[tut.stepIndex]?.actionId === "marketplace_open_buy_tab" &&
+								title === MARKETPLACE_ITEM_PAGE_BUY
+							) {
+								advanceTutorialAction("marketplace_open_buy_tab");
+							}
+						},
 					}}
 				/>
 			);
 		});
-	}, [itemPageData.rawData, itemPageData.ownedCopies, itemPageData.listings, currentPage, handlePageChange]);
+	}, [
+		itemPageData.rawData,
+		itemPageData.ownedCopies,
+		itemPageData.listings,
+		currentPage,
+		handlePageChange,
+		tutorialBlocksNonBuyTab,
+	]);
 
 	return (
 		<frame BackgroundTransparency={1} Size={new UDim2(1, 0, 1, 0)} Visible={visible}>
@@ -203,7 +294,8 @@ export function MarketplaceItemPage({ currentStatus, visible, flashMenu }: Props
 			<CloseButton
 				native={{
 					Size: new UDim2(0, px(21), 0, px(21)),
-					Position: new UDim2(0, px(855), 0, px(24)),
+					Position: new UDim2(1, px(-24), 0, px(24)),
+					AnchorPoint: new Vector2(1, 0),
 					Image: "rbxassetid://114306723191635",
 				}}
 				event={{

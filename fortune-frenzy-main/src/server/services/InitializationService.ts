@@ -30,9 +30,9 @@ const SETTINGS_REFRESH_INTERVAL = 30;
 const LEADERBOARD_REFRESH_INTERVAL = 15;
 const NETWORK_LOG_FLUSH_INTERVAL = 5;
 /** Slower than minigame polls so cash_changes DB work does not compete as often with case battles / jackpots. */
-const CASH_CHANGES_POLL_INTERVAL = 8;
+const CASH_CHANGES_POLL_INTERVAL = 6;
 /** How often to pull Mongo wallet cash for online players (offline admin / marketplace credits without rejoin). */
-const MONGO_WALLET_SYNC_INTERVAL = 15;
+const MONGO_WALLET_SYNC_INTERVAL = 10;
 
 interface SettingsGetResponse {
 	status: string;
@@ -76,7 +76,8 @@ export class InitializationService implements OnInit, OnStart {
 		log("warn", "🚀 [InitializationService] Initializing...");
 		const start_time = tick();
 
-		new Packeter(resolvePacketerBackendUrl());
+		const packeter = new Packeter(resolvePacketerBackendUrl());
+		await packeter.waitForInitialHealthGate();
 		ReplicatedStorage.SetAttribute("ServerType", getServerType());
 
 		log("print", `✅ [InitializationService] Initialized in ${setDecimalPlaces(tick() - start_time)}ms`);

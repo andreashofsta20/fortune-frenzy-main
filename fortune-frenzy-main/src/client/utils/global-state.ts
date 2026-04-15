@@ -4,6 +4,8 @@ import { atom } from "@rbxts/charm";
 export const activeMenuAtom = atom<string>("");
 export const previousMenuAtom = atom("");
 export const isNavigationVisibleAtom = atom<boolean>(true);
+/** While true, App hides menus/sidebar so nothing can set nav visible on top of the API-down loading screen. */
+export const backendApiUnreachableAtom = atom<boolean>(false);
 export const marketplaceBackContextAtom = atom<string>("marketplace");
 
 /** UI Effects & Overlays */

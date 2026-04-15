@@ -17,7 +17,10 @@ export function inventorySlotToUserAssetId(slot: string): string {
 
 /**
  * UAIDs the given user must not pick for new coinflip / jackpot stakes (and similar UIs):
- * marketplace listings they created, copies committed to active coinflips, jackpots, or pending trades.
+ * marketplace listings, active coinflip/jackpot stakes, and pending trades:
+ * - **Outbound** (you are initiator): `initiator.items`
+ * - **Inbound** (you are receiver): `receiver.items` — copies you’ve put toward that offer; same items must
+ *   stay available for accept, so they can’t be staked elsewhere (matches backend trade locks).
  */
 export function collectUnavailableUserAssetIds(
 	clientStateController: ClientStateController,

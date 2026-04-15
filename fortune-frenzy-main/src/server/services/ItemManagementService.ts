@@ -3,7 +3,7 @@ import { Events } from "server/network";
 import { Request } from "server/util/packeter";
 import log from "shared/util/log";
 import { setDecimalPlaces } from "shared/util/number-utils";
-import { MarketplaceItemsDataResponse, Item } from "typings/APIResponses";
+import { MarketplaceItemsDataResponse, MarketplaceItemDataResponse, Item } from "typings/APIResponses";
 import { ServerScriptService } from "@rbxts/services";
 import getPollingCooldown from "server/util/get-polling-cooldown";
 import { getPlayersOnMenu } from "server/util/player-menu-tracker";
@@ -99,6 +99,22 @@ export class ItemManagementService implements OnInit {
 		}
 
 		return "";
+	}
+
+	/** Pull one catalog row from the API (live average_price + copies_in_circulation). Updates cache and broadcasts ItemUpdate. */
+	async refreshCatalogItemRow(itemId: string): Promise<Item | undefined> {
+		if (!this.Loaded || itemId.size() === 0) return undefined;
+
+		const response = await new Request("GET", `/marketplace/items/${itemId}`, undefined, undefined).GetResponse<MarketplaceItemDataResponse>();
+
+		if (!response.Success || !response.Response?.data) {
+			return undefined;
+		}
+
+		const item = response.Response.data;
+		this.ItemInfo.set(item.id, item);
+		Events.ItemUpdate.broadcast([item]);
+		return item;
 	}
 
 	getRandomItemBetweenValues(minValue: number, maxValue: number): string | undefined {

@@ -21,6 +21,14 @@ import { Corner } from "../tools/Corner";
 import { replacePlaceholder } from "shared/util/string-utils";
 import { isLoadingAtom } from "client/utils/global-state";
 import { requestServer } from "client/utils/send-function";
+import { peek } from "@rbxts/charm";
+import {
+	TUTORIAL_STEPS,
+	TUTORIAL_TARGET_IDS,
+	advanceTutorialAction,
+	tutorialPurchasedItemIdAtom,
+	tutorialStateAtom,
+} from "client/tutorial/tutorial-state";
 
 interface Props {
 	currentConfirmationPrompt: {
@@ -145,6 +153,8 @@ export function ConfirmationPrompt({
 				imageColor={palette.blueText}
 				transparency={transparency}
 				zindex={2}
+				tutorialActionId="marketplace_confirm_direct_buy"
+				tutorialTargetId={TUTORIAL_TARGET_IDS.marketplaceConfirmPurchaseButton}
 				event={{
 					Activated: async () => {
 						if (!currentConfirmationPrompt.enabled) return;
@@ -179,6 +189,14 @@ export function ConfirmationPrompt({
 						isLoadingAtom(false);
 
 						if (result !== -1 && result.status === "success") {
+							if (currentConfirmationPrompt.directItemId) {
+								const tut = peek(tutorialStateAtom);
+								const step = TUTORIAL_STEPS[tut.stepIndex];
+								if (tut.active && step?.actionId === "marketplace_confirm_direct_buy") {
+									tutorialPurchasedItemIdAtom(currentConfirmationPrompt.directItemId);
+									advanceTutorialAction("marketplace_confirm_direct_buy");
+								}
+							}
 							setSuccessText(MARKETPLACE_PURCHASE_SUCCESS);
 						} else if (result !== -1) {
 							setSuccessText(

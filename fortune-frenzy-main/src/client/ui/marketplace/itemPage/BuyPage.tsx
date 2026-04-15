@@ -7,6 +7,8 @@ import { addCommasToNumber } from "shared/util/number-utils";
 import { replacePlaceholder } from "shared/util/string-utils";
 import { Item, ItemListing } from "typings/APIResponses";
 import { isItemDirectShopPurchaseBlocked } from "shared/util/is-item-direct-shop-blocked";
+import { peek } from "@rbxts/charm";
+import { advanceTutorialAction, TUTORIAL_STEPS, tutorialStateAtom, TUTORIAL_TARGET_IDS } from "client/tutorial/tutorial-state";
 import { ItemPageReseller } from "./Reseller";
 
 interface Props {
@@ -98,7 +100,17 @@ export function BuyPage({
 				buttonIcon="rbxassetid://11833005733"
 				buttonText="Purchase"
 				LayoutOrder={0}
+				tutorialActionId="marketplace_click_direct_purchase"
+				tutorialTargetId={TUTORIAL_TARGET_IDS.marketplaceDirectPurchaseButton}
 				activated={() => {
+					const tut = peek(tutorialStateAtom);
+					if (
+						tut.active &&
+						TUTORIAL_STEPS[tut.stepIndex]?.actionId === "marketplace_click_direct_purchase"
+					) {
+						advanceTutorialAction("marketplace_click_direct_purchase");
+					}
+
 					if (currentConfirmationPrompt.listing || currentConfirmationPrompt.directItemId) return;
 
 					setCurrentConfirmationPrompt({

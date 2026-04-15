@@ -21,3 +21,7 @@ func NetworkLog(c *fiber.Ctx) error {
 func DiscordRelay(c *fiber.Ctx) error {
 	return misc.DiscordRelay(c)
 }
+
+func DedupeItemCopies(c *fiber.Ctx) error {
+	return misc.DedupeItemCopies(c)
+}

@@ -31,6 +31,9 @@ func DiscordRelay(c *fiber.Ctx) error {
 	log.Printf("[DiscordRelay] relaying %d Roblox log entries for server %s", len(body.Entries), body.ServerID)
 
 	for _, entry := range body.Entries {
+		if !utilities.DiscordRelayLevelIsError(entry.Level) {
+			continue
+		}
 		details := map[string]string{
 			"server": body.ServerID,
 		}

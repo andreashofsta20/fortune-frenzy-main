@@ -5,6 +5,7 @@ import { SectionStroke } from "../../tools/SectionStroke";
 import { TextLabel } from "../../core/TextLabel";
 import { Button } from "../../core/Button";
 import { Corner } from "client/ui/tools/Corner";
+import { TutorialActionId } from "client/tutorial/tutorial-state";
 
 interface Props extends PropsWithChildren {
 	key?: string;
@@ -19,6 +20,8 @@ interface Props extends PropsWithChildren {
 	buttonBackgroundColor?: Color3;
 	buttonTextColor?: Color3;
 	activated: (rbx: ImageButton, inputObject: InputObject, clickCount: number) => void;
+	tutorialActionId?: TutorialActionId;
+	tutorialTargetId?: string;
 }
 
 export function ItemPageReseller({
@@ -35,6 +38,8 @@ export function ItemPageReseller({
 	buttonBackgroundColor,
 	buttonTextColor,
 	key,
+	tutorialActionId,
+	tutorialTargetId,
 }: Props) {
 	const px = usePx();
 
@@ -98,6 +103,8 @@ export function ItemPageReseller({
 				textColor={buttonTextColor ?? palette.blueText}
 				imageColor={buttonTextColor ?? palette.blueText}
 				transparency={buttonTransparency ?? 0}
+				tutorialActionId={tutorialActionId}
+				tutorialTargetId={tutorialTargetId}
 				event={{ Activated: activated }}
 			/>
 			{children}

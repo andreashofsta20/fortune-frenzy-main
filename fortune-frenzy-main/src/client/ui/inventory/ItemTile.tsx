@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "@rbxts/react";
+import { registerTutorialTarget, unregisterTutorialTarget } from "client/tutorial/tutorial-state";
 import { usePx } from "client/hooks/use-px";
 import { palette } from "client/utils/palette";
 import { TextLabel } from "../core/TextLabel";
@@ -33,6 +34,10 @@ interface Props {
 	onLeave: () => void;
 	LayoutOrder?: number;
 	faded?: boolean;
+	/** When set, registers this tile for the tutorial spotlight. */
+	tutorialTargetId?: string;
+	/** When true, tile ignores input (tutorial: only one tile is allowed). */
+	tutorialInputBlocked?: boolean;
 }
 
 function ItemTileComponent({
@@ -49,8 +54,17 @@ function ItemTileComponent({
 	onHover,
 	onLeave,
 	faded = false,
+	tutorialTargetId,
+	tutorialInputBlocked = false,
 }: Props) {
 	const px = usePx();
+	const [tileButtonRef, setTileButtonRef] = useState<ImageButton | undefined>(undefined);
+
+	useEffect(() => {
+		if (!tutorialTargetId || !tileButtonRef) return;
+		registerTutorialTarget(tutorialTargetId, tileButtonRef);
+		return () => unregisterTutorialTarget(tutorialTargetId, tileButtonRef);
+	}, [tutorialTargetId, tileButtonRef]);
 	const rarity = value !== undefined ? getRarity(value) : undefined;
 	const baseColor = Color3.fromHex(rarity ? RARITY_COLORS[rarity] : color);
 	const gradientMid = rarity === "common" ? baseColor : brighten(baseColor, -0.15);
@@ -78,12 +92,15 @@ function ItemTileComponent({
 
 	return (
 		<imagebutton
+			ref={setTileButtonRef}
 			Visible={visible}
 			LayoutOrder={LayoutOrder}
 			BackgroundTransparency={1}
 			Image={""}
+			Active={!tutorialInputBlocked}
 			Event={{
 				Activated: (_, inputObject) => {
+					if (tutorialInputBlocked) return;
 					onSelect(id, inputObject);
 					buttonClick();
 				},
@@ -186,7 +203,7 @@ function ItemTileComponent({
 				Position={new UDim2(0.5, 0, 0.5, 0)}
 				AnchorPoint={new Vector2(0.5, 0.5)}
 				BackgroundColor3={palette.background1}
-				BackgroundTransparency={faded ? 0.3 : 1}
+				BackgroundTransparency={faded || tutorialInputBlocked ? 0.3 : 1}
 				ZIndex={2}
 				BorderSizePixel={0}
 			/>

@@ -35,7 +35,7 @@ func main() {
 		return c.JSON(fiber.Map{"status": "ok"})
 	})
 
-	app.Post("/register/:serverId", func(c *fiber.Ctx) error {
+	app.Post("/register/:serverId", middleware.RateLimitRegister(), func(c *fiber.Ctx) error {
 		serverID := c.Params("serverId")
 		apiKey := c.Get("x-api-key")
 		if serverID == "" || apiKey == "" {
@@ -48,8 +48,7 @@ func main() {
 		return c.JSON(fiber.Map{"status": "OK"})
 	})
 
-	app.Post("/packet/:serverId", func(c *fiber.Ctx) error {
-		batchStart := time.Now()
+	app.Post("/packet/:serverId", middleware.RateLimitPacket(), func(c *fiber.Ctx) error {
 		serverID := c.Params("serverId")
 		var body struct {
 			Packet []struct {
@@ -69,11 +68,8 @@ func main() {
 			Response  [2]any `json:"response"`
 		}
 		responses := make([]packetResponse, 0, len(body.Packet))
-		routes := make([]string, 0, len(body.Packet))
 
 		for _, req := range body.Packet {
-			routes = append(routes, fmt.Sprintf("%s %s", req.Method, req.Route))
-
 			httpReq, err := http.NewRequest(req.Method, req.Route, bytes.NewReader(req.Body))
 			if err != nil {
 				payload := map[string]string{"error": "Bad request"}
@@ -104,7 +100,7 @@ func main() {
 			responses = append(responses, packetResponse{RequestID: req.RequestID, Response: [2]any{resp.StatusCode, parsed}})
 			utilities.LogRobloxPacketSubresponse(serverID, req.RequestID, req.Method, req.Route, resp.StatusCode, parsed)
 
-			if resp.StatusCode >= 400 {
+			if resp.StatusCode >= 500 {
 				preview := string(respBody)
 				if len(preview) > 300 {
 					preview = preview[:300]
@@ -112,8 +108,6 @@ func main() {
 				utilities.DiscordLogError("PacketSubRequest", fmt.Sprintf("%s %s returned %d", req.Method, req.Route, resp.StatusCode), map[string]string{"body": preview})
 			}
 		}
-
-		utilities.DiscordLogPacketBatch(serverID, len(body.Packet), time.Since(batchStart), routes)
 
 		out := fiber.Map{"status": "OK", "responses": responses}
 		utilities.LogRobloxPacketFull(serverID, out)

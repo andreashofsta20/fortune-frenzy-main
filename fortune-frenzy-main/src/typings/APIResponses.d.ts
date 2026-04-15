@@ -6,11 +6,12 @@ export interface Item {
 	description: string;
 	/** Mean price of active marketplace listings (cash). 0 when none listed. */
 	average_price: number;
+	/** Case/catalog “times unboxed” counter — not the same as live copies in the economy. */
 	total_unboxed: number;
 	maximum_copies: number;
 	/** Rolimons value */
 	value: number;
-	/** Rows in item_copies for this catalog id */
+	/** Live copies in DB (`item_copies` rows) — all sources; use for “exist globally”. */
 	copies_in_circulation?: number;
 	created_at: string;
 	updated_at: string;

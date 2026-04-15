@@ -48,7 +48,7 @@ func GetCoinflips(c *fiber.Ctx) error {
 		if rawStr, ok := raw.(string); ok && rawStr != "" {
 			var cf models.CoinflipData
 			if err := json.Unmarshal([]byte(rawStr), &cf); err == nil {
-				if cf.Type == "global" || (cf.Type == "server" && cf.ServerID == serverID) {
+				if cf.Type == "global" || cf.Type == "friends" || (cf.Type == "server" && cf.ServerID == serverID) {
 					coinflips = append(coinflips, cf)
 				}
 			}

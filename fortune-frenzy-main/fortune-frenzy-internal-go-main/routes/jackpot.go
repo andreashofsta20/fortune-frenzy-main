@@ -8,25 +8,17 @@ import (
 )
 
 func SetupJackpotRoutes(app *fiber.App) {
+	auth := middleware.Authorization(middleware.AuthTypeServerKey)
+	rlR := middleware.RateLimitRead()
+	rlW := middleware.RateLimitWrite()
+
 	jp := app.Group("/jackpot")
 
-	jp.Get("/pots",
-		middleware.Authorization(middleware.AuthTypeServerKey),
-		handlers.GetPots,
-	)
+	jp.Get("/pots", rlR, auth, handlers.GetPots)
 
-	jp.Post("/create",
-		middleware.Authorization(middleware.AuthTypeServerKey),
-		handlers.CreatePot,
-	)
+	jp.Post("/create", rlW, auth, handlers.CreatePot)
 
-	jp.Post("/join/:jackpotId",
-		middleware.Authorization(middleware.AuthTypeServerKey),
-		handlers.JoinPot,
-	)
+	jp.Post("/join/:jackpotId", rlW, auth, handlers.JoinPot)
 
-	jp.Post("/leave/:jackpotId",
-		middleware.Authorization(middleware.AuthTypeServerKey),
-		handlers.LeavePot,
-	)
+	jp.Post("/leave/:jackpotId", rlW, auth, handlers.LeavePot)
 }

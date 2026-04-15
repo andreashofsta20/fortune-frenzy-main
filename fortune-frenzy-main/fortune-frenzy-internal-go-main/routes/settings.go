@@ -8,8 +8,8 @@ import (
 )
 
 func SetupSettingsRoutes(app *fiber.App) {
-	app.Get("/settings",
-		middleware.Authorization(middleware.AuthTypeServerKey),
-		handlers.GetSettings,
-	)
+	auth := middleware.Authorization(middleware.AuthTypeServerKey)
+	rlR := middleware.RateLimitRead()
+
+	app.Get("/settings", rlR, auth, handlers.GetSettings)
 }

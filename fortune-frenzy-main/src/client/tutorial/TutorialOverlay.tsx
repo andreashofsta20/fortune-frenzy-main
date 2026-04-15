@@ -2,12 +2,20 @@ import React, { useEffect, useRef, useState } from "@rbxts/react";
 import { createPortal } from "@rbxts/react-roblox";
 import { useAtom } from "@rbxts/react-charm";
 import { RunService, TweenService, Workspace } from "@rbxts/services";
+import { coinflipStateAtom, inventoryOverlayStateAtom } from "client/utils/global-state";
 import { usePx } from "client/hooks/use-px";
 import { usePxScale } from "client/hooks/use-scale";
 import { palette } from "client/utils/palette";
 import { TextLabel } from "client/ui/core/TextLabel";
 import { Corner } from "client/ui/tools/Corner";
-import { TUTORIAL_STEPS, getTutorialTarget, tutorialStateAtom } from "./tutorial-state";
+import {
+	TUTORIAL_NO_HIGHLIGHT_TARGET,
+	TUTORIAL_STEPS,
+	TUTORIAL_TARGET_IDS,
+	getTutorialTarget,
+	tutorialPurchasedItemIdAtom,
+	tutorialStateAtom,
+} from "./tutorial-state";
 
 const OVERLAY_ZINDEX = 500;
 const PANEL_ZINDEX = OVERLAY_ZINDEX + 20;
@@ -49,6 +57,9 @@ export function TutorialOverlay() {
 	const pxScale = usePxScale();
 	const overlayRef = useRef<Frame>();
 	const tutorialState = useAtom(tutorialStateAtom);
+	const coinflipState = useAtom(coinflipStateAtom);
+	const inventoryOverlay = useAtom(inventoryOverlayStateAtom);
+	const tutorialPurchasedId = useAtom(tutorialPurchasedItemIdAtom);
 	const [highlightTarget, setHighlightTarget] = useState<GuiObject | undefined>(undefined);
 	const [highlightRect, setHighlightRect] = useState<HighlightRect | undefined>(undefined);
 	const [outerStroke, setOuterStroke] = useState<UIStroke | undefined>(undefined);
@@ -73,6 +84,32 @@ export function TutorialOverlay() {
 				return;
 			}
 
+			const stakeSelectionUi =
+				step.actionId === "coinflip_create_complete" &&
+				coinflipState === "create" &&
+				inventoryOverlay?.visible === true;
+
+			if (stakeSelectionUi) {
+				if (tutorialPurchasedId && tutorialPurchasedId.size() > 0) {
+					const target = getTutorialTarget(TUTORIAL_TARGET_IDS.coinflipStakePurchasedItem);
+					if (!target || !target.IsDescendantOf(game)) {
+						setHighlightTarget(undefined);
+						setHighlightRect(undefined);
+						setOuterStroke(undefined);
+						setInnerStroke(undefined);
+						return;
+					}
+					setHighlightTarget(target);
+					setHighlightRect(toHighlightRect(target, overlayRef.current));
+				} else {
+					setHighlightTarget(undefined);
+					setHighlightRect(undefined);
+					setOuterStroke(undefined);
+					setInnerStroke(undefined);
+				}
+				return;
+			}
+
 			const target = getTutorialTarget(step.targetId);
 			if (!target || !target.IsDescendantOf(game)) {
 				setHighlightTarget(undefined);
@@ -89,7 +126,13 @@ export function TutorialOverlay() {
 		updateHighlight();
 		const connection = RunService.RenderStepped.Connect(updateHighlight);
 		return () => connection.Disconnect();
-	}, [tutorialState.active, tutorialState.stepIndex]);
+	}, [
+		tutorialState.active,
+		tutorialState.stepIndex,
+		coinflipState,
+		inventoryOverlay,
+		tutorialPurchasedId,
+	]);
 
 	useEffect(() => {
 		if (!tutorialState.active) return;
@@ -136,6 +179,17 @@ export function TutorialOverlay() {
 	}
 
 	const step = tutorialState.active ? TUTORIAL_STEPS[tutorialState.stepIndex] : undefined;
+	const suppressTutorialDim =
+		tutorialState.active &&
+		step !== undefined &&
+		step.actionId === "coinflip_create_complete" &&
+		coinflipState === "create" &&
+		inventoryOverlay?.visible === true;
+	const fullscreenTutorialDim =
+		tutorialState.active &&
+		step !== undefined &&
+		step.targetId === TUTORIAL_NO_HIGHLIGHT_TARGET &&
+		!suppressTutorialDim;
 	const hasHighlight = tutorialState.active && highlightTarget !== undefined;
 
 	const panelTitle = tutorialState.completionPending ? "Finishing Tutorial" : (step?.title ?? "Loading Tutorial");
@@ -148,7 +202,6 @@ export function TutorialOverlay() {
 	const viewportSize = getViewportSize();
 	const overlayWidth = math.max(0, math.floor(overlayRef.current?.AbsoluteSize.X ?? viewportSize.X));
 	const overlayHeight = math.max(0, math.floor(overlayRef.current?.AbsoluteSize.Y ?? viewportSize.Y));
-	const hasHighlightRect = hasHighlight && highlightRect !== undefined;
 	const glowOuterThickness = px(3);
 	const glowOuterTransparency = 0.6;
 	const glowInnerThickness = px(2);
@@ -157,6 +210,8 @@ export function TutorialOverlay() {
 	const glowInnerColor = Color3.fromRGB(165, 220, 255);
 	const overlayColor = Color3.fromRGB(6, 9, 16);
 	const overlayTransparency = 0.55;
+	const hasHighlightRect =
+		!suppressTutorialDim && hasHighlight && highlightRect !== undefined;
 	const holeLeft = hasHighlightRect ? math.clamp(math.floor(highlightRect!.x), 0, overlayWidth) : 0;
 	const holeTop = hasHighlightRect ? math.clamp(math.floor(highlightRect!.y), 0, overlayHeight) : 0;
 	const holeRight = hasHighlightRect
@@ -200,6 +255,18 @@ export function TutorialOverlay() {
 
 	return (
 		<frame ref={overlayRef} BackgroundTransparency={1} Size={UDim2.fromScale(1, 1)} ZIndex={OVERLAY_ZINDEX}>
+			{tutorialState.active && fullscreenTutorialDim ? (
+				<frame
+					BackgroundColor3={overlayColor}
+					BackgroundTransparency={overlayTransparency}
+					BorderSizePixel={0}
+					Size={UDim2.fromScale(1, 1)}
+					Position={UDim2.fromOffset(0, 0)}
+					ZIndex={OVERLAY_ZINDEX}
+					Active={false}
+					Selectable={false}
+				/>
+			) : undefined}
 			{tutorialState.active && hasHighlightRect ? (
 				<>
 					<frame

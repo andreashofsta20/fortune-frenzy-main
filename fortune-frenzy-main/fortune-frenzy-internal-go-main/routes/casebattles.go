@@ -8,37 +8,23 @@ import (
 )
 
 func SetupCaseBattleRoutes(app *fiber.App) {
+	auth := middleware.Authorization(middleware.AuthTypeServerKey)
+	rlR := middleware.RateLimitRead()
+	rlW := middleware.RateLimitWrite()
+
 	cb := app.Group("/casebattles")
 
-	cb.Get("/cases",
-		middleware.Authorization(middleware.AuthTypeServerKey),
-		handlers.GetCaseBattleCases,
-	)
+	cb.Get("/cases", rlR, auth, handlers.GetCaseBattleCases)
 
-	cb.Get("/",
-		middleware.Authorization(middleware.AuthTypeServerKey),
-		handlers.GetBattles,
-	)
+	cb.Get("/", rlR, auth, handlers.GetBattles)
 
-	cb.Post("/create",
-		middleware.Authorization(middleware.AuthTypeServerKey),
-		handlers.CreateBattle,
-	)
+	cb.Post("/create", rlW, auth, handlers.CreateBattle)
 
-	cb.Post("/join/:battleId",
-		middleware.Authorization(middleware.AuthTypeServerKey),
-		handlers.JoinBattle,
-	)
+	cb.Post("/join/:battleId", rlW, auth, handlers.JoinBattle)
 
-	cb.Post("/cancel/:battleId",
-		middleware.Authorization(middleware.AuthTypeServerKey),
-		handlers.CancelBattle,
-	)
+	cb.Post("/cancel/:battleId", rlW, auth, handlers.CancelBattle)
 
-	cb.Post("/cleanup-completed",
-		middleware.Authorization(middleware.AuthTypeServerKey),
-		func(c *fiber.Ctx) error {
-			return c.JSON(fiber.Map{"status": "OK", "removed": 0})
-		},
-	)
+	cb.Post("/cleanup-completed", rlW, auth, func(c *fiber.Ctx) error {
+		return c.JSON(fiber.Map{"status": "OK", "removed": 0})
+	})
 }

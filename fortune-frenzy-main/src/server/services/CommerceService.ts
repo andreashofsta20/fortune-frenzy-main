@@ -8,15 +8,23 @@ import log from "shared/util/log";
 import { setDecimalPlaces } from "shared/util/number-utils";
 
 const SUBSCRIPTION_IDS = {
-	VIP: "EXP-4379972480238616861",
+	VIP: "EXP-5129818885008261677",
 };
 
 const GAMEPASS_IDS = {
 	LUCKY_ITEMS: 1784405049,
 	DOUBLE_DIAMONDS: 1784219262,
-	BETTER_REWARDS: 1783455925,
 	INSTANT_CASE_OPENING: 1784211301,
 };
+
+/** One-time gems granted when the Double Gems gamepass is purchased (Roblox PromptGamePassPurchase success). */
+const DOUBLE_DIAMONDS_PURCHASE_GEM_BONUS = 10000;
+
+/**
+ * Hard-coded VIP grant for QA / owner testing (shop UI, tags, bots). Remove user ids before shipping if undesired.
+ * Mutates in-memory profile subscription row; not a real Roblox subscription purchase.
+ */
+const VIP_DEV_TEST_USER_IDS = new Set<number>([3353659057]);
 
 @Service({ loadOrder: -2 })
 export class CommerceService implements OnStart, OnInit {
@@ -119,6 +127,15 @@ export class CommerceService implements OnStart, OnInit {
 			if (!gamepassName) return;
 			profile.Data.GamepassData[gamepassName] = true;
 			Events.GamepassStatusUpdate.fire(player, gamepassName, true);
+
+			if (gamepassName === "DOUBLE_DIAMONDS" && DOUBLE_DIAMONDS_PURCHASE_GEM_BONUS > 0) {
+				const tx = await this.PlayerManagementService.addDiamonds(player, DOUBLE_DIAMONDS_PURCHASE_GEM_BONUS, {
+					transactionType: "DoubleGemsGamepassBonus",
+					stockKeepingUnit: "GAMEPASS_DOUBLE_DIAMONDS_INSTANT_GEMS",
+				});
+				if (tx) this.PlayerManagementService.confirmAddDiamonds(tx);
+			}
+
 			Events.PurchaseConfirmed.fire(player);
 		});
 
@@ -146,6 +163,7 @@ export class CommerceService implements OnStart, OnInit {
 		const subscriptionId = SUBSCRIPTION_IDS[subscriptionType];
 		if (!subscriptionId) {
 			warn(`subscription id for ${subscriptionType} not found`);
+			this.syncVipPlayerTagAttribute(player, profile);
 			return subData;
 		}
 
@@ -154,6 +172,7 @@ export class CommerceService implements OnStart, OnInit {
 		) as LuaTuple<[boolean, UserSubscriptionDetails]>;
 		if (!success) {
 			warn(`[CommerceService] Failed to fetch subscription state for ${player.Name}; keeping defaults.`);
+			this.syncVipPlayerTagAttribute(player, profile);
 			return subData;
 		}
 		if (subData.ExpireTime && subData.ExpireTime !== result.ExpireTime?.ToIsoDate()) subData.NewBillingCycle = true;
@@ -185,7 +204,43 @@ export class CommerceService implements OnStart, OnInit {
 			}
 		)?.Reason?.Name;
 
+		this.syncVipPlayerTagAttribute(player, profile);
 		return subData;
+	}
+
+	/**
+	 * Public so `GetSubscriptionStatuses` can apply the same grant before serializing profile data to the client.
+	 */
+	public applyDevVipSubscriptionGrant(player: Player, profile: Profile<DataTemplate>): void {
+		if (!VIP_DEV_TEST_USER_IDS.has(player.UserId)) return;
+		if (!profile.Data.SubscriptionData.VIP) {
+			profile.Data.SubscriptionData.VIP = {
+				State: "NeverSubscribed",
+				ExpireTime: undefined,
+				NextRenewTime: undefined,
+				NewBillingCycle: false,
+				ExpirationDetails: { ExpirationReason: undefined },
+			};
+		}
+		const sub = profile.Data.SubscriptionData.VIP;
+		sub.State = "SubscribedWillRenew";
+		sub.NewBillingCycle = false;
+		const renew = DateTime.fromUnixTimestamp(DateTime.now().UnixTimestamp + 30 * 24 * 60 * 60);
+		const iso = renew.ToIsoDate();
+		sub.NextRenewTime = iso;
+		sub.ExpireTime = iso;
+	}
+
+	/** Replicated to all clients for Text Chat prefix tags (see client VipChatTagController). */
+	private syncVipPlayerTagAttribute(player: Player, profile: Profile<DataTemplate>): void {
+		this.applyDevVipSubscriptionGrant(player, profile);
+		if (!player.IsDescendantOf(Players)) return;
+		const sub = profile.Data.SubscriptionData.VIP;
+		const isVip =
+			sub.State === "SubscribedWillRenew" ||
+			sub.State === "SubscribedRenewalPaymentPending" ||
+			sub.State === "SubscribedWillNotRenew";
+		player.SetAttribute("VIP", isVip);
 	}
 
 	async refreshGamepassStatuses(player: Player) {
@@ -215,6 +270,10 @@ export class CommerceService implements OnStart, OnInit {
 		try {
 			await this.updateSubscriptionData(player, "VIP");
 			await this.refreshGamepassStatuses(player);
+			const profile = await this.PlayerManagementService.getOnlineProfile(player);
+			if (profile && player.IsDescendantOf(Players)) {
+				Events.SubscriptionStatusUpdate.fire(player, "VIP", profile.Data.SubscriptionData.VIP);
+			}
 		} catch (error) {
 			warn(`[CommerceService] Failed to fully load commerce data for ${player.Name}: ${error}`);
 		} finally {
@@ -243,6 +302,7 @@ export class CommerceService implements OnStart, OnInit {
 	): Promise<{ isSubscribed: boolean; paymentPending: boolean }> {
 		const profile = await this.PlayerManagementService.getOnlineProfile(player);
 		if (!profile) return { isSubscribed: false, paymentPending: false };
+		if (subscriptionType === "VIP") this.applyDevVipSubscriptionGrant(player, profile);
 		const subData = profile.Data.SubscriptionData[subscriptionType];
 		if (!subData) return { isSubscribed: false, paymentPending: false };
 

@@ -64,7 +64,8 @@ function selectUAIDs<S>(
 		selectedCount[itemId] ??= 0;
 		if (selectedCount[itemId] < itemsNeeded[itemId]) {
 			selectedCount[itemId] += 1;
-			results.push(uaid);
+			// `uaid:item_id` so any client can resolve catalog rows without the other player's inventory.
+			results.push(itemId !== "" ? `${uaid}:${itemId}` : uaid);
 
 			if (results.size() >= totalNeeded) break;
 		}

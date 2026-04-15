@@ -22,6 +22,8 @@ import { palette } from "client/utils/palette";
 import { requestServer } from "client/utils/send-function";
 import { getCoinflipJoinValueRange } from "shared/util/coinflip-join-range";
 import { resolveStakeItemId } from "client/utils/trade-stake-token";
+import { peek } from "@rbxts/charm";
+import { advanceTutorialAction, TUTORIAL_STEPS, tutorialStateAtom } from "client/tutorial/tutorial-state";
 
 // Custom hook to manage coinflip state transitions
 const useCoinflipMenuLogic = (flashMenu: () => void) => {
@@ -122,6 +124,25 @@ const useCoinflipMenuLogic = (flashMenu: () => void) => {
 							resolve();
 						});
 					});
+
+					const tut = peek(tutorialStateAtom);
+					const onTutorialCreate =
+						tut.active && TUTORIAL_STEPS[tut.stepIndex]?.actionId === "coinflip_create_complete";
+					if (onTutorialCreate) {
+						const reg = await requestServer(
+							Functions.Loading.RegisterTutorialCoinflip,
+							"Failed to register tutorial coinflip",
+							result.message,
+						);
+						if (reg !== -1 && reg.status === "success") {
+							advanceTutorialAction("coinflip_create_complete");
+						} else if (reg !== -1) {
+							clientStateController.NotificationEvent.Fire(
+								`<font color="#${palette.lossRed.ToHex()}">${reg.message ?? "Could not continue tutorial"}</font>`,
+								"rbxassetid://134904801170653",
+							);
+						}
+					}
 
 					coinflipIdAtom(result.message);
 					coinflipStateAtom("viewing");

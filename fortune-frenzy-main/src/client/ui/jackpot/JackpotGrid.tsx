@@ -374,7 +374,11 @@ export function JackpotGrid({ visible, setCurrentPage }: Props) {
 				}}
 			/>
 			<CloseButton
-				native={{ Size: new UDim2(0, px(21), 0, px(21)), Position: new UDim2(0, px(855), 0, px(24)) }}
+				native={{
+				Size: new UDim2(0, px(21), 0, px(21)),
+				Position: new UDim2(1, px(-24), 0, px(24)),
+				AnchorPoint: new Vector2(1, 0),
+			}}
 				event={{ Activated: () => changeMenu("Minigames") }}
 			/>
 			<Button

@@ -51,6 +51,12 @@ interface ServerToClientEvents {
 	GamepassStatusUpdate: (gamepass: string, status: boolean) => void;
 	PurchaseConfirmed: () => void;
 	SoftShutdown: (messages: { clientMessage?: string; serverMessage?: string }) => void;
+	/** Fired when the Go API is unreachable vs recovered (Packeter HTTP). Not used for Roblox HttpService throttle. */
+	BackendApiConnectivity: (state: {
+		online: boolean;
+		clientMessage?: string;
+		serverMessage?: string;
+	}) => void;
 	MinigamesUpdated: (
 		global: Map<
 			string,
@@ -156,6 +162,16 @@ interface ClientToServerFunctions {
 			completed: boolean;
 			reward_claimed: boolean;
 			should_show: boolean;
+			reward_preview?: { cash: number; gems: number; item_name?: string };
+		};
+		/** Skip the guided tour offer; does not grant tutorial rewards. */
+		DeclineGuidedTutorial: () => {
+			status: "success" | "error";
+			message?: string;
+			completed: boolean;
+			reward_claimed: boolean;
+			should_show: boolean;
+			reward_preview?: { cash: number; gems: number; item_name?: string };
 		};
 		CompleteTutorial: () => {
 			status: "success" | "error";
@@ -168,6 +184,8 @@ interface ClientToServerFunctions {
 				item_id?: string;
 			};
 		};
+		/** During onboarding only: marks the coinflip you created so Call Bot works once without VIP. */
+		RegisterTutorialCoinflip: (coinflipId: string) => { status: "success" | "error"; message?: string };
 		GetDailyReward: () => {
 			available: boolean;
 			rewards: Record<string, { claimed_at: number; reward: string; reward_data: string }>;
@@ -181,6 +199,8 @@ interface ClientToServerFunctions {
 		GetInventory: () => Map<string, string[]>;
 		GetEntireMarketplace: () => Map<string, Item>;
 		GetMarketplaceItem: (itemId: string) => Item | undefined;
+		/** Re-fetch one catalog row from the API (live avg listing price + copies in circulation). */
+		RefreshMarketplaceItemFromApi: (itemId: string) => Item | undefined;
 		GetAllListings: () => Map<string, ItemListing[]>;
 		GetListingsForItem: (itemId: string) => ItemListing[];
 		GetEquippedItems: () => string[];

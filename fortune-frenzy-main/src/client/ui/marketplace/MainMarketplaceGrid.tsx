@@ -10,19 +10,25 @@ import { ItemTile } from "../inventory/ItemTile";
 import {
 	INVENTORY_SEARCH_PLACEHOLDER,
 	MARKETPLACE_MENU_TITLE,
-	MARKETPLACE_SORT_RARITY,
 	MARKETPLACE_SORT_HIGHEST_VALUE,
 	MARKETPLACE_SORT_LOWEST_VALUE,
 	MARKETPLACE_SORT_HIGHEST_PRICE,
 	MARKETPLACE_SORT_LOWEST_PRICE,
 } from "shared/util/strings";
-import getRarity from "shared/util/get-item-rarity";
 import { SortButton } from "../core/SortButton";
 import { useThrottle } from "client/hooks/use-throttle";
 import { escapeSpecialChars } from "shared/util/string-utils";
-import { usePxScale } from "client/hooks/use-scale";
+import { useAtom } from "@rbxts/react-charm";
+import { peek } from "@rbxts/charm";
 import { activeMarketplacePageAtom, marketplaceStatusAtom } from "client/utils/global-state";
 import { handleCloseButton } from "client/utils/menu-utils";
+import {
+	TUTORIAL_STEPS,
+	TUTORIAL_TARGET_IDS,
+	advanceTutorialAction,
+	resolveTutorialMarketplaceDirectBuyItemId,
+	tutorialStateAtom,
+} from "client/tutorial/tutorial-state";
 import { getBestPrice } from "shared/util/get-best-price";
 import { addCommasToNumber } from "shared/util/number-utils";
 import { VirtualizedScrollingFrame } from "../core/VirtualizedScrollingFrame";
@@ -96,6 +102,7 @@ function reducer(state: typeof initialState, action: Action) {
 export function MainMarketplaceGrid({ parentFrameRef, visible }: Props) {
 	const clientStateController = Modding.resolveSingleton(ClientStateController);
 	const marketplace = clientStateController.ItemInfo;
+	const tutorialState = useAtom(tutorialStateAtom);
 	const px = usePx();
 	const rowHeight = px(145) + px(4);
 	const [state, dispatch] = useReducer(reducer, initialState);
@@ -117,7 +124,13 @@ export function MainMarketplaceGrid({ parentFrameRef, visible }: Props) {
 
 	const handleTileActivation = useCallback(
 		(id: string) => {
-			warn("handleTileActivation", id);
+			const tut = peek(tutorialStateAtom);
+			const step = TUTORIAL_STEPS[tut.stepIndex];
+			if (tut.active && step?.actionId === "marketplace_pick_tutorial_item") {
+				const resolved = resolveTutorialMarketplaceDirectBuyItemId(marketplace);
+				if (!resolved || id !== resolved) return;
+				advanceTutorialAction("marketplace_pick_tutorial_item");
+			}
 
 			dispatch({ type: ActionTypes.SET_SELECTED_TILE, payload: id });
 			const mousePosition = UserInputService.GetMouseLocation();
@@ -127,8 +140,21 @@ export function MainMarketplaceGrid({ parentFrameRef, visible }: Props) {
 			dispatch({ type: ActionTypes.SET_RELATIVE_MOUSE_POSITION, payload: relativePosition });
 			marketplaceStatusAtom(`item_info_${id}`);
 		},
-		[parentFrameRef, dispatch],
+		[parentFrameRef, dispatch, marketplace],
 	);
+
+	const pickTutorialStepActive =
+		tutorialState.active && TUTORIAL_STEPS[tutorialState.stepIndex]?.actionId === "marketplace_pick_tutorial_item";
+	const resolvedTutorialItemId = useMemo(
+		() => (pickTutorialStepActive ? resolveTutorialMarketplaceDirectBuyItemId(marketplace) : undefined),
+		[pickTutorialStepActive, marketplace, listingsVersion],
+	);
+
+	useEffect(() => {
+		if (pickTutorialStepActive) {
+			dispatch({ type: ActionTypes.SET_CURRENT_SEARCH, payload: "" });
+		}
+	}, [pickTutorialStepActive]);
 
 	const itemTiles = useMemo(() => {
 		interface TileData {
@@ -166,7 +192,6 @@ export function MainMarketplaceGrid({ parentFrameRef, visible }: Props) {
 		const filteredTiles: TileData[] = [];
 		let i = 0;
 		marketplace.forEach((item, id) => {
-			const rarity = getRarity(item.value ?? 0, true);
 			const value = item.value ?? 0;
 
 			if (item.total_unboxed === 0 && item.category === "classic") return;
@@ -201,6 +226,14 @@ export function MainMarketplaceGrid({ parentFrameRef, visible }: Props) {
 								(state.sortOrder === "price_high" || state.sortOrder === "price_low") &&
 								getBestPrice(clientStateController.ItemListings.get(id) ?? []) === -1
 							}
+							tutorialTargetId={
+								pickTutorialStepActive && resolvedTutorialItemId === id
+									? TUTORIAL_TARGET_IDS.marketplaceTutorialItemTile
+									: undefined
+							}
+							tutorialInputBlocked={
+								!!(pickTutorialStepActive && resolvedTutorialItemId !== undefined && id !== resolvedTutorialItemId)
+							}
 						/>
 					),
 					exclusive: item.category === "exclusive",
@@ -212,12 +245,27 @@ export function MainMarketplaceGrid({ parentFrameRef, visible }: Props) {
 
 		setTotalValidItems(i);
 		filteredTiles.sort(sortItems);
-		filteredTiles.forEach((tile, index) => {
-			tile.component = React.cloneElement(tile.component, { LayoutOrder: index });
-		});
 
-		return filteredTiles.map((tile) => tile.component);
-	}, [marketplace, debouncedSearch, state.sortOrder, handleTileActivation, dispatch, px, listingsVersion]);
+		let orderedTiles = filteredTiles;
+		if (pickTutorialStepActive && resolvedTutorialItemId) {
+			const hit = filteredTiles.find((t) => t.id === resolvedTutorialItemId);
+			if (hit) {
+				orderedTiles = [hit, ...filteredTiles.filter((t) => t.id !== resolvedTutorialItemId)];
+			}
+		}
+
+		return orderedTiles.map((tile, index) => React.cloneElement(tile.component, { LayoutOrder: index }));
+	}, [
+		marketplace,
+		debouncedSearch,
+		state.sortOrder,
+		handleTileActivation,
+		dispatch,
+		px,
+		listingsVersion,
+		pickTutorialStepActive,
+		resolvedTutorialItemId,
+	]);
 
 	return (
 		<frame BackgroundTransparency={1} Size={new UDim2(1, 0, 1, 0)} Visible={visible}>
@@ -233,7 +281,11 @@ export function MainMarketplaceGrid({ parentFrameRef, visible }: Props) {
 				}}
 			/>
 			<CloseButton
-				native={{ Size: new UDim2(0, px(21), 0, px(21)), Position: new UDim2(0, px(855), 0, px(24)) }}
+				native={{
+				Size: new UDim2(0, px(21), 0, px(21)),
+				Position: new UDim2(1, px(-24), 0, px(24)),
+				AnchorPoint: new Vector2(1, 0),
+			}}
 				event={{ Activated: handleCloseButton }}
 			/>
 			<TextInputBox
@@ -245,6 +297,10 @@ export function MainMarketplaceGrid({ parentFrameRef, visible }: Props) {
 				image="rbxassetid://104380087729663"
 				change={{
 					Text: (text: TextBox) => {
+						if (pickTutorialStepActive) {
+							text.Text = "";
+							return;
+						}
 						dispatch({ type: ActionTypes.SET_CURRENT_SEARCH, payload: text.Text });
 					},
 				}}
@@ -255,7 +311,10 @@ export function MainMarketplaceGrid({ parentFrameRef, visible }: Props) {
 				typeface="Sans"
 				weight="Medium"
 				current={state.sortOrder}
-				setSortOrder={(order: string) => dispatch({ type: ActionTypes.SET_SORT_ORDER, payload: order })}
+				setSortOrder={(order: string) => {
+					if (pickTutorialStepActive) return;
+					dispatch({ type: ActionTypes.SET_SORT_ORDER, payload: order });
+				}}
 				options={[
 					["value_high", MARKETPLACE_SORT_HIGHEST_VALUE, 0, "rbxassetid://89977107525633"],
 					["value_low", MARKETPLACE_SORT_LOWEST_VALUE, 180, "rbxassetid://89977107525633"],

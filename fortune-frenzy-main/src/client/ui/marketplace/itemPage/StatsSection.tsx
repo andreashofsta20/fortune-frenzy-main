@@ -48,9 +48,8 @@ export function ItemPageStatsSection({ data }: Props) {
 
 				switch (info[0]) {
 					case MARKETPLACE_ITEM_STATS_QUANTITY:
-						subtitle = addCommasToNumber(
-							data?.data.copies_in_circulation ?? data?.data.total_unboxed ?? 0,
-						);
+						// DB global stock: COUNT(item_copies) only. Do not use total_unboxed (case-open stat).
+						subtitle = addCommasToNumber(data?.data.copies_in_circulation ?? 0);
 						break;
 					case MARKETPLACE_ITEM_STATS_VALUE:
 						subtitle = addCommasToNumber(data?.data.value || 0);

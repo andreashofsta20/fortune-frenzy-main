@@ -1,4 +1,4 @@
-import React, { useMemo } from "@rbxts/react";
+import React, { useEffect, useMemo, useState } from "@rbxts/react";
 import { MenuCore } from "../navigation/MenuCore";
 import { usePx } from "client/hooks/use-px";
 import { palette } from "client/utils/palette";
@@ -9,9 +9,14 @@ import { ROBUX_SHOP_TITLE } from "shared/util/strings";
 import { Modding } from "@flamework/core";
 import { ClientStateController } from "client/controllers/ClientStateController";
 import DiamondTile from "../exclusive_store/DiamondTile";
-import GamepassTile from "../exclusive_store/GamepassTile";
+import GamepassTile, {
+	VIP_SUBSCRIPTION_IMAGE,
+	VIP_SUBSCRIPTION_PRODUCT_ID,
+} from "../exclusive_store/GamepassTile";
 import ScrollingFrameSection from "../exclusive_store/ScrollingFrameSection";
 import { handleCloseButton } from "client/utils/menu-utils";
+import { Events } from "client/network";
+import { SubscriptionData } from "typings/APIResponses";
 
 export interface RobuxShopMenuProps {
 	visible: boolean;
@@ -22,17 +27,29 @@ const COLORS = {
 	gamepass: {
 		"1784219262": Color3.fromRGB(55, 189, 241),
 		"1784211301": Color3.fromRGB(236, 132, 35),
-		"1783455925": Color3.fromRGB(144, 34, 233),
 		"1784405049": Color3.fromRGB(144, 34, 233),
 	} as Record<string, Color3>,
 	subscription: {
-		"EXP-4379972480238616861": Color3.fromRGB(255, 173, 32),
+		[VIP_SUBSCRIPTION_PRODUCT_ID]: Color3.fromRGB(255, 173, 32),
 	} as Record<string, Color3>,
 };
 
 function RobuxShopMenuComponent({ visible }: RobuxShopMenuProps) {
 	const px = usePx();
 	const clientStateController = Modding.resolveSingleton(ClientStateController);
+
+	const [vipSubscriptionRow, setVipSubscriptionRow] = useState<SubscriptionData | undefined>(undefined);
+
+	useEffect(() => {
+		const sync = () => setVipSubscriptionRow(clientStateController.SubscriptionData.get("VIP"));
+		sync();
+		const connection = Events.SubscriptionStatusUpdate.connect(sync);
+		return () => connection.Disconnect();
+	}, [clientStateController]);
+
+	useEffect(() => {
+		if (visible) setVipSubscriptionRow(clientStateController.SubscriptionData.get("VIP"));
+	}, [visible, clientStateController]);
 
 	const diamondsProductArray = useMemo(() => {
 		const products: number[] = [];
@@ -60,9 +77,41 @@ function RobuxShopMenuComponent({ visible }: RobuxShopMenuProps) {
 		return tiles;
 	}, [diamondsProductArray, clientStateController.ProductInfo]);
 
+	const subscriptionTiles = useMemo(() => {
+		const subscriptions = clientStateController.RobuxProducts.Subscriptions;
+		const tiles: JSX.Element[] = [];
+
+		subscriptions.forEach((subscriptionId) => {
+			const info = clientStateController.ProductInfo.get(tostring(subscriptionId)) as SubscriptionInfo | undefined;
+			if (!info) return;
+
+			const iconId = (info as unknown as { IconImageAssetId?: number }).IconImageAssetId;
+			const image =
+				subscriptionId === VIP_SUBSCRIPTION_PRODUCT_ID
+					? VIP_SUBSCRIPTION_IMAGE
+					: typeIs(iconId, "number") && iconId > 0
+						? `rbxassetid://${iconId}`
+						: "rbxassetid://85064031907597";
+
+			tiles.push(
+				<GamepassTile
+					option="subscription"
+					info={info}
+					layoutOrder={info.PriceTier ?? 0}
+					color={COLORS.subscription[subscriptionId] ?? Color3.fromRGB(255, 173, 32)}
+					image={image}
+					id={subscriptionId}
+					key={`subscription-${subscriptionId}`}
+					subscriptionRow={subscriptionId === VIP_SUBSCRIPTION_PRODUCT_ID ? vipSubscriptionRow : undefined}
+				/>,
+			);
+		});
+
+		return tiles;
+	}, [clientStateController.RobuxProducts, clientStateController.ProductInfo, vipSubscriptionRow]);
+
 	const gamepassTiles = useMemo(() => {
 		const gamepasses = clientStateController.RobuxProducts.Gamepasses;
-		const subscriptions = clientStateController.RobuxProducts.Subscriptions;
 		const tiles: JSX.Element[] = [];
 
 		gamepasses.forEach((productId) => {
@@ -74,7 +123,7 @@ function RobuxShopMenuComponent({ visible }: RobuxShopMenuProps) {
 						option="gamepass"
 						info={info}
 						layoutOrder={info.PriceInRobux ?? 0}
-						color={COLORS.gamepass[productId]}
+						color={COLORS.gamepass[productId] ?? palette.blue}
 						image={`rbxthumb://type=GamePass&id=${productId}&w=150&h=150`}
 						id={tonumber(productId)!}
 						key={`gamepass-${productId}`}
@@ -83,28 +132,8 @@ function RobuxShopMenuComponent({ visible }: RobuxShopMenuProps) {
 			}
 		});
 
-		subscriptions.forEach((productId) => {
-			const info = clientStateController.ProductInfo.get(tostring(productId)) as SubscriptionInfo | undefined;
-			if (info) {
-				tiles.push(
-					<GamepassTile
-						option="subscription"
-						info={info}
-						layoutOrder={info.PriceTier}
-						color={COLORS.subscription[productId]}
-						image={`rbxassetid://${(info as unknown as { IconImageAssetId: number }).IconImageAssetId}`}
-						id={productId}
-						key={`subscription-${productId}`}
-					/>,
-				);
-			}
-		});
-
 		return tiles;
-	}, [
-		clientStateController.RobuxProducts,
-		clientStateController.ProductInfo,
-	]);
+	}, [clientStateController.RobuxProducts, clientStateController.ProductInfo]);
 
 	return (
 		<MenuCore>
@@ -152,6 +181,9 @@ function RobuxShopMenuComponent({ visible }: RobuxShopMenuProps) {
 						HorizontalAlignment={Enum.HorizontalAlignment.Center}
 						SortOrder={Enum.SortOrder.LayoutOrder}
 					/>
+					<ScrollingFrameSection title="VIP" layoutOrder={0}>
+						{subscriptionTiles}
+					</ScrollingFrameSection>
 					<ScrollingFrameSection title="Gamepasses" layoutOrder={1}>
 						{gamepassTiles}
 					</ScrollingFrameSection>

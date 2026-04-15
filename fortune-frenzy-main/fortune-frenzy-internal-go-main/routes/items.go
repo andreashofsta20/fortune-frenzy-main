@@ -8,25 +8,17 @@ import (
 )
 
 func SetupItemRoutes(app *fiber.App) {
+	auth := middleware.Authorization(middleware.AuthTypeServerKey)
+	rlR := middleware.RateLimitRead()
+	rlS := middleware.RateLimitStrict()
+
 	items := app.Group("/items")
 
-	items.Post("/add",
-		middleware.Authorization(middleware.AuthTypeServerKey),
-		handlers.AddItem,
-	)
+	items.Post("/add", rlS, auth, handlers.AddItem)
 
-	items.Get("/find_items_in_range",
-		middleware.Authorization(middleware.AuthTypeServerKey),
-		handlers.FindItemsInRange,
-	)
+	items.Get("/find_items_in_range", rlR, auth, handlers.FindItemsInRange)
 
-	items.Post("/item-transfer",
-		middleware.Authorization(middleware.AuthTypeServerKey),
-		handlers.TransferItems,
-	)
+	items.Post("/item-transfer", rlS, auth, handlers.TransferItems)
 
-	items.Post("/item-transfer/:transferId/confirm",
-		middleware.Authorization(middleware.AuthTypeServerKey),
-		handlers.ConfirmTransfer,
-	)
+	items.Post("/item-transfer/:transferId/confirm", rlS, auth, handlers.ConfirmTransfer)
 }

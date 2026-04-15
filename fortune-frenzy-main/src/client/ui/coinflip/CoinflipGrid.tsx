@@ -12,9 +12,22 @@ import { Corner } from "../tools/Corner";
 import { Modding } from "@flamework/core";
 import { ClientStateController } from "client/controllers/ClientStateController";
 import { CoinflipGridItem } from "./CoinflipGridItem";
-import { changeMenu, handleCloseButton } from "client/utils/menu-utils";
+import { changeMenu } from "client/utils/menu-utils";
 import { coinAtom, coinflipIdAtom, coinflipStateAtom } from "client/utils/global-state";
 import { peek } from "@rbxts/charm";
+import { Coinflip } from "typings/APIResponses";
+import { resolveStakeItemId } from "client/utils/trade-stake-token";
+import { TUTORIAL_TARGET_IDS } from "client/tutorial/tutorial-state";
+
+function filterCoinflipsForTab(coinflips: readonly Coinflip[], tab: string): Coinflip[] {
+	if (tab === "Friends Only") {
+		return coinflips.filter((cf) => cf.type === "friends");
+	}
+	if (tab === "Server") {
+		return coinflips.filter((cf) => cf.type === "server");
+	}
+	return coinflips.filter((cf) => cf.type === "global" || cf.type === "server");
+}
 
 interface Props extends React.PropsWithChildren {
 	visible: boolean;
@@ -27,10 +40,38 @@ export function CoinflipGrid({ visible, flashMenu, children }: Props) {
 	const [currentTab, setCurrentTab] = React.useState<string>("Global");
 	const [sortType, setSortType] = React.useState("value_highest");
 	const [updateCounter, setUpdateCounter] = React.useState(0);
-	const availableTabs = getServerType() === "Public" ? ["Global", "Friends Only"] : ["Global", "Server"];
+	const isPublicServer = getServerType() === "Public";
+	const availableTabs = isPublicServer ? ["Global", "Friends Only"] : ["Global", "Server"];
+
+	useEffect(() => {
+		const tabs = isPublicServer ? ["Global", "Friends Only"] : ["Global", "Server"];
+		if (tabs.indexOf(currentTab) < 0) {
+			setCurrentTab(tabs[0]);
+		}
+	}, [currentTab, isPublicServer]);
 
 	const coinflipTiles = useMemo(() => {
-		return clientStateController.Coinflips.map((coinflip, index) => (
+		const filtered = filterCoinflipsForTab(clientStateController.Coinflips, currentTab);
+		const getValue = (cf: Coinflip) => {
+			const items = [...cf.player1_items, ...(cf.player2_items ?? [])];
+			return items.reduce((acc, item) => {
+				const itemId = resolveStakeItemId(item);
+				const itemData = clientStateController.ItemInfo.get(itemId);
+				return itemData ? acc + itemData.value : acc;
+			}, 0);
+		};
+		const sorted = [...filtered].sort((a, b) => {
+			const valueA = getValue(a);
+			const valueB = getValue(b);
+			if (sortType === "value_highest") {
+				return valueB > valueA;
+			}
+			if (sortType === "value_lowest") {
+				return valueA > valueB;
+			}
+			return false;
+		});
+		return sorted.map((coinflip, index) => (
 			<CoinflipGridItem
 				key={coinflip.id}
 				coinflip={coinflip}
@@ -41,10 +82,13 @@ export function CoinflipGrid({ visible, flashMenu, children }: Props) {
 				}}
 			/>
 		));
-	}, [updateCounter]);
+	}, [updateCounter, currentTab, sortType]);
 
 	useEffect(() => {
-		if (!visible) return;
+		if (!visible) {
+			setCurrentTab("Global");
+			return;
+		}
 
 		setUpdateCounter((v) => v + 1);
 		const connection = clientStateController.CoinflipChangedEvent.Connect(() => setUpdateCounter((v) => v + 1));
@@ -76,7 +120,11 @@ export function CoinflipGrid({ visible, flashMenu, children }: Props) {
 				}}
 			/>
 			<CloseButton
-				native={{ Size: new UDim2(0, px(21), 0, px(21)), Position: new UDim2(0, px(855), 0, px(24)) }}
+				native={{
+				Size: new UDim2(0, px(21), 0, px(21)),
+				Position: new UDim2(1, px(-24), 0, px(24)),
+				AnchorPoint: new Vector2(1, 0),
+			}}
 				event={{ Activated: () => changeMenu("Minigames") }}
 			/>
 			<Button
@@ -87,6 +135,8 @@ export function CoinflipGrid({ visible, flashMenu, children }: Props) {
 				weight="SemiBold"
 				backgroundColor={palette.blue}
 				textColor={palette.blueText}
+				tutorialActionId="coinflip_create_complete"
+				tutorialTargetId={TUTORIAL_TARGET_IDS.coinflipCreateButton}
 				event={{ Activated: handleCreateClick }}
 			/>
 			<SortButton
@@ -119,6 +169,7 @@ export function CoinflipGrid({ visible, flashMenu, children }: Props) {
 				anchorPoint={new Vector2(1, 0)}
 			/>
 			<scrollingframe
+				key={currentTab}
 				BackgroundTransparency={1}
 				AnchorPoint={new Vector2(0.5, 0)}
 				Position={new UDim2(0.5, 0, 0, px(112))}

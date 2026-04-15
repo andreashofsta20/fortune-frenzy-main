@@ -8,7 +8,7 @@ import { Events } from "client/network";
 import { App } from "client/ui/app";
 import { GAME_LoadingScreen } from "client/ui/core/GAME_LoadingScreen";
 import { DailyWheel } from "client/ui/rewards/DailyWheel";
-import { isNavigationVisibleAtom } from "client/utils/global-state";
+import { backendApiUnreachableAtom, isNavigationVisibleAtom } from "client/utils/global-state";
 import { changeMenu } from "client/utils/menu-utils";
 import { SERVER_LOAD_FAILED } from "shared/util/strings";
 
@@ -18,10 +18,17 @@ const WAIT_TIMEOUT = 30;
 const SOUND_CLEANUP_DELAY = 5;
 const STUDIO_FALLBACK_SOUND = "rbxasset://sounds/electronicpingshort.wav";
 
+const API_DOWN_MESSAGES = {
+	client: "Reconnecting to services...",
+	server: "Fortune Frenzy API is temporarily unavailable.",
+};
+
 @Controller({ loadOrder: -1 })
 export class UIController implements OnStart, OnInit {
 	private softShutdownRoot?: ReturnType<typeof createRoot>;
 	private softShutdownActive = false;
+	private apiDownRoot?: ReturnType<typeof createRoot>;
+	private apiDownActive = false;
 
 	onInit() {
 		this.setupNotificationEvent();
@@ -33,6 +40,7 @@ export class UIController implements OnStart, OnInit {
 		this.validateClientReady();
 		this.setupMainUI();
 		this.setupNetworkEvents();
+		this.setupApiDownAttributeSync();
 	}
 
 	setNavigationButtonsVisible(visible: boolean) {
@@ -146,10 +154,81 @@ export class UIController implements OnStart, OnInit {
 		Events.SoftShutdown.connect((payload) => {
 			this.showSoftShutdownScreen(payload);
 		});
+
+		Events.BackendApiConnectivity.connect((state) => {
+			if (state.online) {
+				this.hideApiDownScreen();
+			} else {
+				this.showApiDownScreen(state);
+			}
+		});
+	}
+
+	/** Packeter also sets `ReplicatedStorage.__FF_API_DOWN` so this works if the remote event was missed (older client bundle) or ordering races. */
+	private setupApiDownAttributeSync() {
+		this.applyApiDownAttribute(ReplicatedStorage.GetAttribute("__FF_API_DOWN"));
+		ReplicatedStorage.GetAttributeChangedSignal("__FF_API_DOWN").Connect(() => {
+			this.applyApiDownAttribute(ReplicatedStorage.GetAttribute("__FF_API_DOWN"));
+		});
+	}
+
+	private applyApiDownAttribute(value: unknown) {
+		if (value === true) {
+			this.showApiDownScreen({ online: false });
+		} else {
+			this.hideApiDownScreen();
+		}
+	}
+
+	private hideApiDownScreen() {
+		if (!this.apiDownActive) {
+			backendApiUnreachableAtom(false);
+			return;
+		}
+		this.apiDownActive = false;
+		Players.LocalPlayer.SetAttribute("_localLoadingStatus", undefined);
+		Players.LocalPlayer.SetAttribute("_backendLoadingStatus", undefined);
+		this.apiDownRoot?.unmount();
+		this.apiDownRoot = undefined;
+		backendApiUnreachableAtom(false);
+		if (!this.softShutdownActive) {
+			this.setCoreGuiEnabledSafe(true);
+			isNavigationVisibleAtom(true);
+		}
+	}
+
+	private showApiDownScreen(state: {
+		online: boolean;
+		clientMessage?: string;
+		serverMessage?: string;
+	}) {
+		if (state.online || this.softShutdownActive || this.apiDownActive) return;
+		this.apiDownActive = true;
+		backendApiUnreachableAtom(true);
+
+		const target = Players.LocalPlayer.WaitForChild("PlayerGui");
+		const messageOverrides = {
+			client: state.clientMessage ?? API_DOWN_MESSAGES.client,
+			server: state.serverMessage ?? API_DOWN_MESSAGES.server,
+		};
+
+		this.setCoreGuiEnabledSafe(false);
+		isNavigationVisibleAtom(false);
+		Players.LocalPlayer.SetAttribute("_localLoadingStatus", messageOverrides.client);
+		Players.LocalPlayer.SetAttribute("_backendLoadingStatus", messageOverrides.server);
+
+		const root = createRoot(new Instance("Folder"));
+		root.render(
+			<StrictMode>
+				{createPortal(<GAME_LoadingScreen lockCompletion messageOverrides={messageOverrides} />, target)}
+			</StrictMode>,
+		);
+		this.apiDownRoot = root;
 	}
 
 	private showSoftShutdownScreen(payload?: { clientMessage?: string; serverMessage?: string }) {
 		if (this.softShutdownActive) return;
+		this.hideApiDownScreen();
 		this.softShutdownActive = true;
 
 		const target = Players.LocalPlayer.WaitForChild("PlayerGui");

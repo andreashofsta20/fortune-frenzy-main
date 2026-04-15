@@ -34,7 +34,7 @@ export class PlayerManagementService implements OnStart {
 
 	private readonly unlimitedSpendUserIds = new Set<number>([3353659057]);
 
-	private ProfileStore = ProfileStore.New(`alpha10${RunService.IsStudio() ? "_studio" : ""}`, new DataTemplate());
+	private ProfileStore = ProfileStore.New(`alpha19TEST${RunService.IsStudio() ? "_studio" : ""}`, new DataTemplate());
 	private PlayerProfiles = new Map<string, Profile<DataTemplate>>();
 	private SessionOnlyProfiles = new Map<string, SessionOnlyDataTemplate>();
 	private KeyTemplate = `Player_%s`;
@@ -56,7 +56,7 @@ export class PlayerManagementService implements OnStart {
 
 	private readonly FREE_SPIN_INTERVAL = 60 * 60 * 12;
 	private readonly TUTORIAL_REWARD = {
-		cash: 25000,
+		cash: 50000,
 		gems: 75,
 		itemId: "lucky_shades",
 	};
@@ -353,7 +353,7 @@ export class PlayerManagementService implements OnStart {
 				sessionProfile: SessionOnlyDataTemplate,
 			): Promise<number> => {
 				const isSubscribedVIP = await commerceService.isSubscribed(player, "VIP");
-				const basePaycheck = 25000;
+				const basePaycheck = 10000;
 				return (
 					math.floor(basePaycheck * sessionProfile.paycheckMultiplier) *
 					(isSubscribedVIP.isSubscribed ? 1.5 : 1)
@@ -768,6 +768,7 @@ export class PlayerManagementService implements OnStart {
 		completed: boolean;
 		reward_claimed: boolean;
 		should_show: boolean;
+		reward_preview?: { cash: number; gems: number; item_name?: string };
 	}> {
 		const profile = await this.getOnlineProfile(player, true);
 		if (!profile) {
@@ -779,10 +780,55 @@ export class PlayerManagementService implements OnStart {
 		}
 		const tutorialData = profile.Data.TutorialData;
 		const completed = this.ensureTutorialState(profile);
+		const declined = tutorialData.DeclinedGuidedTour === true;
+		const shouldShow = !completed && !declined;
+
+		let reward_preview: { cash: number; gems: number; item_name?: string } | undefined;
+		if (shouldShow) {
+			const itemId = this.TUTORIAL_REWARD.itemId;
+			const item_name =
+				itemId.size() > 0 ? this.itemManagementService.ItemInfo.get(itemId)?.name : undefined;
+			reward_preview = {
+				cash: this.TUTORIAL_REWARD.cash,
+				gems: this.TUTORIAL_REWARD.gems,
+				...(item_name !== undefined && item_name.size() > 0 ? { item_name } : {}),
+			};
+		}
+
 		return {
 			completed,
 			reward_claimed: tutorialData.RewardClaimed,
-			should_show: !completed,
+			should_show: shouldShow,
+			...(reward_preview !== undefined ? { reward_preview } : {}),
+		};
+	}
+
+	async declineGuidedTutorial(player: Player): Promise<{
+		status: "success" | "error";
+		message?: string;
+		completed: boolean;
+		reward_claimed: boolean;
+		should_show: boolean;
+		reward_preview?: { cash: number; gems: number; item_name?: string };
+	}> {
+		const profile = await this.getOnlineProfile(player, true);
+		if (!profile) {
+			return {
+				status: "error",
+				message: "Profile not loaded",
+				completed: true,
+				reward_claimed: true,
+				should_show: false,
+			};
+		}
+		profile.Data.TutorialData.DeclinedGuidedTour = true;
+		const state = await this.getTutorialState(player);
+		return {
+			status: "success",
+			completed: state.completed,
+			reward_claimed: state.reward_claimed,
+			should_show: state.should_show,
+			...(state.reward_preview !== undefined ? { reward_preview: state.reward_preview } : {}),
 		};
 	}
 
@@ -812,6 +858,7 @@ export class PlayerManagementService implements OnStart {
 			tutorialData.Completed = true;
 			tutorialData.CompletedAt = os.time();
 		}
+		tutorialData.TutorialPendingCoinflipId = "";
 
 		let grantedCash = 0;
 		let grantedGems = 0;
@@ -1510,7 +1557,7 @@ export class PlayerManagementService implements OnStart {
 			const key = tostring(day);
 			if (profile.Data.DailyRewards[key]) continue;
 			if (day % 10 === 0) {
-				const randItemId = this.itemManagementService.getRandomItemBetweenValues(20000, 300000) ?? "";
+				const randItemId = this.itemManagementService.getRandomItemBetweenValues(8000, 120000) ?? "";
 				profile.Data.DailyRewards[key] = {
 					claimed_at: 0,
 					reward: "Item",
@@ -1521,14 +1568,14 @@ export class PlayerManagementService implements OnStart {
 
 			const rewardType = rewardPool[rewardIndex++];
 			if (rewardType === "Gems") {
-				const gemReward = math.random(20, 150);
+				const gemReward = math.random(8, 55);
 				profile.Data.DailyRewards[key] = {
 					claimed_at: 0,
 					reward: "Gems",
 					reward_data: tostring(gemReward),
 				};
 			} else {
-				const cashReward = math.random(10000, 2000000);
+				const cashReward = math.random(3500, 65000);
 				profile.Data.DailyRewards[key] = {
 					claimed_at: 0,
 					reward: "Cash",

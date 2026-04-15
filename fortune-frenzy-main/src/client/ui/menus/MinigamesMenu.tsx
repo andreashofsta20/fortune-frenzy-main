@@ -174,9 +174,18 @@ function MinigamesMenuComponent({ visible, flashMenu }: Props) {
 			: globalStat.current_ccu;
 		const [buttonInstance, setButtonInstance] = React.useState<ImageButton | undefined>(undefined);
 
-		const tutorialAction = minigame.internalKey === "ItemCases" ? ("open_item_cases_menu" as const) : undefined;
+		const tutorialAction =
+			minigame.internalKey === "ItemCases"
+				? ("open_item_cases_menu" as const)
+				: minigame.internalKey === "Coinflip"
+					? ("open_coinflip_hub" as const)
+					: undefined;
 		const tutorialTargetId =
-			minigame.internalKey === "ItemCases" ? TUTORIAL_TARGET_IDS.minigamesItemCases : undefined;
+			minigame.internalKey === "ItemCases"
+				? TUTORIAL_TARGET_IDS.minigamesItemCases
+				: minigame.internalKey === "Coinflip"
+					? TUTORIAL_TARGET_IDS.minigamesCoinflip
+					: undefined;
 
 		useEffect(() => {
 			if (!tutorialTargetId || !buttonInstance) return;

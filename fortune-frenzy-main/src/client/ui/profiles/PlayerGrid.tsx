@@ -9,7 +9,8 @@ import {
 	PLAYERS_MENU_TITLE,
 	PLAYERS_SEARCH_PLACEHOLDER,
 	PLAYERS_SORT_NAME,
-	PLAYERS_SORT_VALUE,
+	PLAYERS_SORT_VALUE_HIGH,
+	PLAYERS_SORT_VALUE_LOW,
 } from "shared/util/strings";
 import { SortButton } from "../core/SortButton";
 import { palette } from "client/utils/palette";
@@ -128,7 +129,11 @@ export const PlayerGrid = React.memo(({ visible, openProfileClicked, tradeButton
 				}}
 			/>
 			<CloseButton
-				native={{ Size: new UDim2(0, px(21), 0, px(21)), Position: new UDim2(0, px(855), 0, px(24)) }}
+				native={{
+				Size: new UDim2(0, px(21), 0, px(21)),
+				Position: new UDim2(1, px(-24), 0, px(24)),
+				AnchorPoint: new Vector2(1, 0),
+			}}
 				event={{ Activated: handleCloseButton }}
 			/>
 			<TextInputBox
@@ -152,8 +157,8 @@ export const PlayerGrid = React.memo(({ visible, openProfileClicked, tradeButton
 				weight="Medium"
 				setSortOrder={(order: string) => dispatch({ type: "SET_SORT_ORDER", payload: order })}
 				options={[
-					["value_high", PLAYERS_SORT_VALUE, 0, "rbxassetid://89977107525633"],
-					["value_low", PLAYERS_SORT_VALUE, 180, "rbxassetid://89977107525633"],
+					["value_high", PLAYERS_SORT_VALUE_HIGH, 0, "rbxassetid://89977107525633"],
+					["value_low", PLAYERS_SORT_VALUE_LOW, 180, "rbxassetid://89977107525633"],
 					["name_a-z", "Sort by A-Z", 0, "rbxassetid://126172904480875"],
 					["name_z-a", "Sort by Z-A", 0, "rbxassetid://126172904480875"],
 				]}

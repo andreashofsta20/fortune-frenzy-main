@@ -48,7 +48,9 @@ export const CASE_BATTLES_VIEWING_TITLE = "{{name}}'s Battle";
 export const PLAYERS_MENU_TITLE = "People";
 export const PLAYERS_SEARCH_PLACEHOLDER = "You can search for players outside of this server!";
 export const PLAYERS_SORT_NAME = "Sort by Name";
-export const PLAYERS_SORT_VALUE = "Sort by Value";
+/** Player list: value ordering (dropdown must show two distinct labels; avoid duplicate “Sort by Value”). */
+export const PLAYERS_SORT_VALUE_HIGH = "Sort by Highest Value";
+export const PLAYERS_SORT_VALUE_LOW = "Sort by Lowest Value";
 export const PLAYERS_PROFILE_TITLE = "@{{name}}'s Profile";
 export const PLAYERS_CARD_TRADE_BUTTON = "Trade";
 export const PLAYERS_CARD_TRADE_BUTTON_YOU = "This is you!";
@@ -75,6 +77,7 @@ export const MARKETPLACE_SORT_HIGHEST_VALUE = "Sort by Highest Value";
 export const MARKETPLACE_SORT_LOWEST_VALUE = "Sort by Lowest Value";
 export const MARKETPLACE_SORT_HIGHEST_PRICE = "Sort by Highest Price";
 export const MARKETPLACE_SORT_LOWEST_PRICE = "Sort by Lowest Price";
+/** Marketplace item stat label: live copy count from item_copies (not total_unboxed). */
 export const MARKETPLACE_ITEM_STATS_QUANTITY = "Quantity";
 export const MARKETPLACE_ITEM_STATS_VALUE = "Value";
 export const MARKETPLACE_ITEM_STATS_AVERAGE_PRICE = "Average Price";

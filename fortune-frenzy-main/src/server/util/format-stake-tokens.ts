@@ -8,7 +8,11 @@ export function formatStakeTokensWithItemIds(
 	const out: string[] = [];
 	for (const raw of uaids) {
 		const parts = raw.split(":");
-		const u = parts.size() >= 2 ? parts[0] : raw;
+		if (parts.size() >= 2 && parts[1] !== "") {
+			out.push(`${parts[0]}:${parts[1]}`);
+			continue;
+		}
+		const u = parts[0];
 		const itemId = itemManagement.getItemIdFromUAID(u);
 		if (itemId) out.push(`${u}:${itemId}`);
 		else out.push(u);

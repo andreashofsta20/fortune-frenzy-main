@@ -1,28 +1,27 @@
 import React, { useEffect, useRef } from "@rbxts/react";
-import { usePx } from "client/hooks/use-px";
-import { SidebarButton } from "./SidebarButton";
 import { TweenService } from "@rbxts/services";
 
 interface Props extends React.PropsWithChildren {
 	position: React.Binding<UDim2>;
-	upscaled: boolean;
+	/** Final UIScale (1 = normal, ~1.12 desktop upscale, ~1.4 mobile upscale). */
+	scale: number;
 }
 
-export function MainMenusHolder({ children, position, upscaled }: Props) {
+export function MainMenusHolder({ children, position, scale }: Props) {
 	const upscaleRef = useRef<UIScale>();
 
 	useEffect(() => {
-		const scale = upscaleRef.current;
-		if (!scale) return;
+		const uiScale = upscaleRef.current;
+		if (!uiScale) return;
 
 		const tween = TweenService.Create(
-			scale,
+			uiScale,
 			new TweenInfo(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-			{ Scale: upscaled ? 1.12 : 1 },
+			{ Scale: scale },
 		);
 		tween.Play();
 		return () => tween.Destroy();
-	}, [upscaled]);
+	}, [scale]);
 
 	return (
 		<frame

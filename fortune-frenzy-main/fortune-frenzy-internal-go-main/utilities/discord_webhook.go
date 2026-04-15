@@ -3,10 +3,10 @@ package utilities
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -19,8 +19,13 @@ var (
 )
 
 type discordMessage struct {
-	Content string         `json:"content,omitempty"`
-	Embeds  []discordEmbed `json:"embeds,omitempty"`
+	Content          string            `json:"content,omitempty"`
+	AllowedMentions  *allowedMentions  `json:"allowed_mentions,omitempty"`
+	Embeds           []discordEmbed    `json:"embeds,omitempty"`
+}
+
+type allowedMentions struct {
+	Parse []string `json:"parse,omitempty"`
 }
 
 type discordEmbed struct {
@@ -93,30 +98,24 @@ func sendToDiscord(msg discordMessage) {
 	}
 }
 
-func DiscordLogRequest(method, path string, statusCode int, duration time.Duration, bodyPreview string) {
-	color := 0x2ECC71 // green
-	if statusCode >= 400 && statusCode < 500 {
-		color = 0xE67E22 // orange
-	} else if statusCode >= 500 {
-		color = 0xE74C3C // red
+func discordPingHere(embeds []discordEmbed) discordMessage {
+	return discordMessage{
+		Content: "@here",
+		AllowedMentions: &allowedMentions{
+			Parse: []string{"everyone"},
+		},
+		Embeds: embeds,
 	}
+}
 
-	if len(bodyPreview) > 500 {
-		bodyPreview = bodyPreview[:500] + "..."
+// DiscordRelayLevelIsError returns whether a Roblox/client log level should post to the error webhook.
+func DiscordRelayLevelIsError(level string) bool {
+	switch strings.ToLower(strings.TrimSpace(level)) {
+	case "error", "err", "critical", "fatal", "exception":
+		return true
+	default:
+		return false
 	}
-
-	sendToDiscord(discordMessage{
-		Embeds: []discordEmbed{{
-			Title: fmt.Sprintf("%s %s → %d", method, path, statusCode),
-			Color: color,
-			Fields: []embedField{
-				{Name: "Duration", Value: duration.String(), Inline: true},
-				{Name: "Status", Value: fmt.Sprintf("%d", statusCode), Inline: true},
-			},
-			Timestamp: time.Now().UTC().Format(time.RFC3339),
-			Footer:    &embedFooter{Text: "FF API"},
-		}},
-	})
 }
 
 func DiscordLogError(source, message string, details map[string]string) {
@@ -129,54 +128,25 @@ func DiscordLogError(source, message string, details map[string]string) {
 		fields = append(fields, embedField{Name: k, Value: v})
 	}
 
-	sendToDiscord(discordMessage{
-		Embeds: []discordEmbed{{
-			Title:       "Error: " + source,
-			Description: message,
-			Color:       0xE74C3C,
-			Fields:      fields,
-			Timestamp:   time.Now().UTC().Format(time.RFC3339),
-			Footer:      &embedFooter{Text: "FF API"},
-		}},
-	})
-}
-
-func DiscordLogPacketBatch(serverID string, subRequests int, totalDuration time.Duration, routes []string) {
-	routeList := ""
-	for i, r := range routes {
-		if i >= 10 {
-			routeList += fmt.Sprintf("\n... and %d more", len(routes)-10)
-			break
-		}
-		routeList += r + "\n"
-	}
-
-	sendToDiscord(discordMessage{
-		Embeds: []discordEmbed{{
-			Title: fmt.Sprintf("Packet batch from %s (%d sub-requests)", serverID, subRequests),
-			Color: 0x3498DB,
-			Fields: []embedField{
-				{Name: "Server", Value: serverID, Inline: true},
-				{Name: "Duration", Value: totalDuration.String(), Inline: true},
-				{Name: "Routes", Value: "```\n" + routeList + "```"},
-			},
-			Timestamp: time.Now().UTC().Format(time.RFC3339),
-			Footer:    &embedFooter{Text: "FF API"},
-		}},
-	})
+	sendToDiscord(discordPingHere([]discordEmbed{{
+		Title:       "Error: " + source,
+		Description: message,
+		Color:       0xE74C3C,
+		Fields:      fields,
+		Timestamp:   time.Now().UTC().Format(time.RFC3339),
+		Footer:      &embedFooter{Text: "FF API"},
+	}}))
 }
 
 func DiscordLogInternalError(handler, coinflipOrBattleID, message string) {
-	sendToDiscord(discordMessage{
-		Embeds: []discordEmbed{{
-			Title:       "Internal Error: " + handler,
-			Description: message,
-			Color:       0xE74C3C,
-			Fields: []embedField{
-				{Name: "ID", Value: coinflipOrBattleID, Inline: true},
-			},
-			Timestamp: time.Now().UTC().Format(time.RFC3339),
-			Footer:    &embedFooter{Text: "FF API"},
-		}},
-	})
+	sendToDiscord(discordPingHere([]discordEmbed{{
+		Title:       "Internal Error: " + handler,
+		Description: message,
+		Color:       0xE74C3C,
+		Fields: []embedField{
+			{Name: "ID", Value: coinflipOrBattleID, Inline: true},
+		},
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Footer:    &embedFooter{Text: "FF API"},
+	}}))
 }

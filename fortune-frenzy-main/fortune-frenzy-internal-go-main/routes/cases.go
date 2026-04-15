@@ -8,15 +8,13 @@ import (
 )
 
 func SetupCaseRoutes(app *fiber.App) {
+	auth := middleware.Authorization(middleware.AuthTypeServerKey)
+	rlR := middleware.RateLimitRead()
+	rlS := middleware.RateLimitStrict()
+
 	casesGroup := app.Group("/cases")
 
-	casesGroup.Get("/",
-		middleware.Authorization(middleware.AuthTypeServerKey),
-		handlers.GetCases,
-	)
+	casesGroup.Get("/", rlR, auth, handlers.GetCases)
 
-	casesGroup.Post("/open/:caseId",
-		middleware.Authorization(middleware.AuthTypeServerKey),
-		handlers.OpenCase,
-	)
+	casesGroup.Post("/open/:caseId", rlS, auth, handlers.OpenCase)
 }

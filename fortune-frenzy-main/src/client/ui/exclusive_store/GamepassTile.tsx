@@ -8,16 +8,26 @@ import { formatWithSuffix } from "shared/util/number-utils";
 import { isLoadingAtom } from "client/utils/global-state";
 import { brighten, setValue } from "client/utils/color-utils";
 import { palette } from "client/utils/palette";
+import { SubscriptionData } from "typings/APIResponses";
+import {
+	formatSubscriptionTimeRemaining,
+	isSubscriptionDataActive,
+} from "client/utils/subscription-display";
+
+/** Must match `CommerceService` SUBSCRIPTION_IDS.VIP (server). */
+export const VIP_SUBSCRIPTION_PRODUCT_ID = "EXP-5129818885008261677";
+
+/** VIP tile art. `rbxthumb` loads reliably in ImageLabels; raw `rbxassetid` often fails for non-bundled assets. */
+export const VIP_SUBSCRIPTION_IMAGE = "rbxassetid://88528353846972";
 
 const DESCRIPTIONS = {
 	gamepass: {
-		"1784219262": "Get 2x Gems from the Exclusive Store + 10,000 free Gems instantly",
+		"1784219262": "Get 2x Gems from the Exclusive Store + 10,000 free Gems instantly when you buy this pass",
 		"1784211301": "Open cases at super speed! Applies only to Item Cases.",
-		"1783455925": "Boost your rewards for doing quests and keeping your login streak",
 		"1784405049": "Receive a free Lucky Roll as a bonus for every 5 cases you open!",
 	} as Record<string, string>,
 	subscription: {
-		"EXP-4379972480238616861":
+		[VIP_SUBSCRIPTION_PRODUCT_ID]:
 			"Unlock exclusive perks like VIP Cases, Bot Coinflips, 2x Shards, and VIP chat—plus more coming soon!",
 	} as Record<string, string>,
 };
@@ -29,6 +39,8 @@ interface GamepassTileProps<T extends "gamepass" | "subscription"> {
 	color: Color3;
 	image: string;
 	id: T extends "gamepass" ? number : string;
+	/** Server subscription row (e.g. VIP) for owned state and time remaining in the shop. */
+	subscriptionRow?: SubscriptionData;
 }
 
 // Type guard to check if info is GamePassProductInfo
@@ -45,14 +57,31 @@ function isSubscriptionInfo(info: unknown): info is SubscriptionInfo {
 }
 
 const GamepassTile = React.memo(
-	<T extends "gamepass" | "subscription">({ option, info, layoutOrder, color, image, id }: GamepassTileProps<T>) => {
+	<T extends "gamepass" | "subscription">({
+		option,
+		info,
+		layoutOrder,
+		color,
+		image,
+		id,
+		subscriptionRow,
+	}: GamepassTileProps<T>) => {
 		const px = usePx();
 		const ySize = option === "gamepass" ? px(120) : px(150);
 		const stringid = tostring(id);
 
+		const vipOwned =
+			option === "subscription" &&
+			stringid === VIP_SUBSCRIPTION_PRODUCT_ID &&
+			isSubscriptionDataActive(subscriptionRow);
+
 		const buttonText =
 			option === "subscription"
-				? "Subscribe"
+				? vipOwned
+					? "Owned"
+					: stringid === VIP_SUBSCRIPTION_PRODUCT_ID
+						? `Subscribe (\u{E002}1,000/mo)`
+						: "Subscribe"
 				: isGamePassInfo(info)
 					? `Buy (\u{E002}${formatWithSuffix(info.PriceInRobux ?? 0)})`
 					: "Buy";
@@ -68,15 +97,16 @@ const GamepassTile = React.memo(
 					weight="Medium"
 					text={buttonText}
 					textSize={px(18)}
-					textColor={setValue(color, 30)}
-					backgroundColor={color}
+					textColor={vipOwned ? palette.midText : setValue(color, 30)}
+					backgroundColor={vipOwned ? palette.background4 : color}
+					enabled={option === "gamepass" ? true : !vipOwned}
 					event={{
 						Activated: () => {
 							if (option === "gamepass") {
 								isLoadingAtom(true);
 								MarketplaceService.PromptGamePassPurchase(Players.LocalPlayer, id as number);
 								MarketplaceService.PromptGamePassPurchaseFinished.Once(() => isLoadingAtom(false));
-							} else {
+							} else if (!vipOwned) {
 								isLoadingAtom(true);
 								MarketplaceService.PromptSubscriptionPurchase(Players.LocalPlayer, id as string);
 								MarketplaceService.PromptSubscriptionPurchaseFinished.Once(() => isLoadingAtom(false));
@@ -135,7 +165,11 @@ const GamepassTile = React.memo(
 					weight="SemiBold"
 					typeface="Sans"
 					native={{
-						Text: DESCRIPTIONS[option][stringid],
+						Text:
+							option === "gamepass"
+								? DESCRIPTIONS.gamepass[stringid] ?? ""
+								: DESCRIPTIONS.subscription[stringid] ??
+									(isSubscriptionInfo(info) ? ((info as SubscriptionInfo).Description ?? "") : ""),
 						TextSize: option === "subscription" ? px(18) : px(17),
 						Size: new UDim2(0, option === "subscription" ? px(305) : px(200), 0, px(55)),
 						Position:
@@ -147,14 +181,30 @@ const GamepassTile = React.memo(
 						TextColor3: brighten(color, 0.5),
 					}}
 				/>
-				{option === "subscription" && isSubscriptionInfo(info) && (
+				{option === "subscription" && (
 					<TextLabel
 						weight="SemiBold"
 						typeface="Sans"
 						native={{
-							Text: `${info.DisplayPrice}${info.DisplaySubscriptionPeriod}`,
+							Text: (() => {
+								if (vipOwned) {
+									const remaining = formatSubscriptionTimeRemaining(subscriptionRow);
+									return remaining.size() > 0 ? remaining : "VIP active";
+								}
+								if (!isSubscriptionInfo(info)) {
+									return stringid === VIP_SUBSCRIPTION_PRODUCT_ID
+										? `\u{E002}1,000 / month`
+										: "";
+								}
+								const line = `${info.DisplayPrice}${info.DisplaySubscriptionPeriod}`;
+								return line.size() > 0
+									? line
+									: stringid === VIP_SUBSCRIPTION_PRODUCT_ID
+										? `\u{E002}1,000 / month`
+										: "";
+							})(),
 							TextSize: px(20),
-							Size: new UDim2(0, px(153), 0, px(28)),
+							Size: new UDim2(0, px(220), 0, px(28)),
 							Position: new UDim2(0, px(144), 0, px(103)),
 							TextXAlignment: Enum.TextXAlignment.Left,
 							TextYAlignment: Enum.TextYAlignment.Center,

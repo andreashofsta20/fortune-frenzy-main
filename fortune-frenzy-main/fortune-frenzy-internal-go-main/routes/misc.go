@@ -8,23 +8,19 @@ import (
 )
 
 func SetupMiscRoutes(app *fiber.App) {
-	app.Get("/leaderboard",
-		middleware.Authorization(middleware.AuthTypeServerKey),
-		handlers.GetLeaderboard,
-	)
+	auth := middleware.Authorization(middleware.AuthTypeServerKey)
+	masterAuth := middleware.Authorization(middleware.AuthTypeMasterKey)
+	rlR := middleware.RateLimitRead()
+	rlW := middleware.RateLimitWrite()
 
-	app.Get("/statistics/minigames",
-		middleware.Authorization(middleware.AuthTypeServerKey),
-		handlers.GetMinigameStats,
-	)
+	app.Get("/leaderboard", rlR, auth, handlers.GetLeaderboard)
 
-	app.Post("/logging/network",
-		middleware.Authorization(middleware.AuthTypeServerKey),
-		handlers.NetworkLog,
-	)
+	app.Get("/statistics/minigames", rlR, auth, handlers.GetMinigameStats)
 
-	app.Post("/logging/discord",
-		middleware.Authorization(middleware.AuthTypeServerKey),
-		handlers.DiscordRelay,
-	)
+	app.Post("/logging/network", rlW, auth, handlers.NetworkLog)
+
+	app.Post("/logging/discord", rlW, auth, handlers.DiscordRelay)
+
+	// DB integrity: remove duplicate item_copies rows (same copy_id). Uses MASTER_KEY from env.
+	app.Post("/maintenance/dedupe-item-copies", masterAuth, handlers.DedupeItemCopies)
 }

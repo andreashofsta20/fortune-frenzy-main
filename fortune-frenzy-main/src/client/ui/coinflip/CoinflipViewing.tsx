@@ -27,7 +27,7 @@ import { brighten, setValue } from "client/utils/color-utils";
 import { setInterval } from "@rbxts/set-timeout";
 import { UserHeadshot } from "./CoinflipGridItem";
 import { addCommasToNumber, formatWithSuffix, setDecimalPlaces } from "shared/util/number-utils";
-import { Players, RunService } from "@rbxts/services";
+import { MarketplaceService, Players, RunService } from "@rbxts/services";
 import { Functions } from "client/network";
 import { ViewportWithCamera } from "../tools/ViewportWithCamera";
 import findItemsInRange from "client/utils/find-items-in-range";
@@ -38,6 +38,14 @@ import { requestServer } from "client/utils/send-function";
 import { LoadingCircle } from "../core/LoadingCircle";
 import { getCoinflipJoinValueRange } from "shared/util/coinflip-join-range";
 import { resolveStakeItemId } from "client/utils/trade-stake-token";
+import { VIP_SUBSCRIPTION_PRODUCT_ID } from "client/ui/exclusive_store/GamepassTile";
+import { isVipActiveInSubscriptionMap } from "client/utils/is-vip-subscribed";
+import {
+	TUTORIAL_STEPS,
+	TUTORIAL_TARGET_IDS,
+	advanceTutorialAction,
+	tutorialStateAtom,
+} from "client/tutorial/tutorial-state";
 
 interface Props extends React.PropsWithChildren {
 	CoinflipId: string;
@@ -271,6 +279,8 @@ const ItemListSection = ({
 								weight="SemiBold"
 								typeface="Sans"
 								textSize={18}
+								tutorialActionId="coinflip_call_bot_success"
+								tutorialTargetId={TUTORIAL_TARGET_IDS.coinflipCallBotButton}
 								event={{
 									Activated: ownerCallBotActivated,
 								}}
@@ -598,6 +608,16 @@ export function CoinflipViewing({ CoinflipId, visible, handleCloseButton, childr
 	const handleCallBot = async () => {
 		if (!coinflipData) return;
 		if (coinflipData.player1.id !== tostring(Players.LocalPlayer.UserId)) return;
+		const tut = peek(tutorialStateAtom);
+		const onTutorialCallBotStep =
+			tut.active && TUTORIAL_STEPS[tut.stepIndex]?.actionId === "coinflip_call_bot_success";
+
+		if (!onTutorialCallBotStep && !isVipActiveInSubscriptionMap(clientStateController.SubscriptionData)) {
+			isLoadingAtom(true);
+			MarketplaceService.PromptSubscriptionPurchase(Players.LocalPlayer, VIP_SUBSCRIPTION_PRODUCT_ID);
+			MarketplaceService.PromptSubscriptionPurchaseFinished.Once(() => isLoadingAtom(false));
+			return;
+		}
 		isLoadingAtom(true);
 		try {
 			const result = await requestServer(Functions.Coinflip.CallBotCoinflip, "Failed to call bot", CoinflipId);
@@ -607,6 +627,8 @@ export function CoinflipViewing({ CoinflipId, visible, handleCloseButton, childr
 					`<font color="#${palette.lossRed.ToHex()}">${result.message ?? "Failed to call bot"}; Code ${result.code}</font>`,
 					"rbxassetid://134904801170653",
 				);
+			} else if (onTutorialCallBotStep) {
+				advanceTutorialAction("coinflip_call_bot_success");
 			}
 		} finally {
 			isLoadingAtom(false);
@@ -636,7 +658,11 @@ export function CoinflipViewing({ CoinflipId, visible, handleCloseButton, childr
 				}}
 			/>
 			<CloseButton
-				native={{ Size: new UDim2(0, px(21), 0, px(21)), Position: new UDim2(0, px(855), 0, px(24)) }}
+				native={{
+				Size: new UDim2(0, px(21), 0, px(21)),
+				Position: new UDim2(1, px(-24), 0, px(24)),
+				AnchorPoint: new Vector2(1, 0),
+			}}
 				event={{ Activated: handleCloseButton }}
 			/>
 			<frame

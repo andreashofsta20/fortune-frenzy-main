@@ -37,6 +37,12 @@ import {
 	inventorySlotToUserAssetId,
 } from "client/utils/collect-unavailable-stake-uaids";
 import { useAtom } from "@rbxts/react-charm";
+import {
+	TUTORIAL_STEPS,
+	TUTORIAL_TARGET_IDS,
+	tutorialPurchasedItemIdAtom,
+	tutorialStateAtom,
+} from "client/tutorial/tutorial-state";
 import { Item } from "typings/APIResponses";
 
 interface Props {
@@ -61,7 +67,8 @@ interface Props {
 		showMinOrMax?: "min" | "max";
 		/**
 		 * When true (default in selection), copies unavailable for new stakes are excluded from counts and auto-select:
-		 * listed on the marketplace, committed to an active coinflip / jackpot, or a pending trade (for the inventory owner).
+		 * listed on the marketplace, committed to an active coinflip / jackpot, or pending trade copies (outbound
+		 * `initiator.items` and inbound `receiver.items` for the local owner).
 		 */
 		excludeListedCopies?: boolean;
 		/** Whose listings to treat as locked (defaults to local player). Use when selecting from another user's inventory. */
@@ -317,6 +324,9 @@ function InventoryMenuComponent({
 		dispatch({ type: "SET_HOVERING_TILE", payload: "" });
 	}, [dispatch]);
 
+	const tutorialSnap = useAtom(tutorialStateAtom);
+	const tutorialPurchasedItemId = useAtom(tutorialPurchasedItemIdAtom);
+
 	const memoizedData = useMemo(() => {
 		interface RawTile {
 			id: string;
@@ -395,26 +405,63 @@ function InventoryMenuComponent({
 
 		filteredTiles.sort(sortItems);
 
-		const components = filteredTiles.map((tile: RawTile, index: number) => (
-			<ItemTile
-				key={tile.id}
-				id={tile.id}
-				name={tile.name}
-				subtitle={`x${tile.copies}`}
-				exclusive={tile.exclusive}
-				assetId={tile.assetId}
-				visible={true}
-				LayoutOrder={index}
-				onSelect={onSelect}
-				onHover={onHover}
-				onLeave={onLeave}
-				color={tile.color}
-				value={tile.value}
-			/>
-		));
+		let orderedTiles = filteredTiles;
+		if (
+			mode === "selection" &&
+			tutorialSnap.active &&
+			TUTORIAL_STEPS[tutorialSnap.stepIndex]?.actionId === "coinflip_create_complete" &&
+			tutorialPurchasedItemId
+		) {
+			const hit = filteredTiles.find((t) => t.id === tutorialPurchasedItemId);
+			if (hit) {
+				orderedTiles = [hit, ...filteredTiles.filter((t) => t.id !== tutorialPurchasedItemId)];
+			}
+		}
+
+		const components = orderedTiles.map((tile: RawTile, index: number) => {
+			const stakeTutorialHighlight =
+				mode === "selection" &&
+				tutorialSnap.active &&
+				TUTORIAL_STEPS[tutorialSnap.stepIndex]?.actionId === "coinflip_create_complete" &&
+				tutorialPurchasedItemId !== undefined &&
+				tutorialPurchasedItemId === tile.id;
+
+			return (
+				<ItemTile
+					key={tile.id}
+					id={tile.id}
+					name={tile.name}
+					subtitle={`x${tile.copies}`}
+					exclusive={tile.exclusive}
+					assetId={tile.assetId}
+					visible={true}
+					LayoutOrder={index}
+					onSelect={onSelect}
+					onHover={onHover}
+					onLeave={onLeave}
+					color={tile.color}
+					value={tile.value}
+					tutorialTargetId={
+						stakeTutorialHighlight ? TUTORIAL_TARGET_IDS.coinflipStakePurchasedItem : undefined
+					}
+				/>
+			);
+		});
 
 		return components;
-	}, [gridInventory, debouncedSearch, state.sortOrder, selectionData, onSelect, onHover, onLeave]);
+	}, [
+		gridInventory,
+		debouncedSearch,
+		state.sortOrder,
+		selectionData,
+		onSelect,
+		onHover,
+		onLeave,
+		mode,
+		tutorialSnap.active,
+		tutorialSnap.stepIndex,
+		tutorialPurchasedItemId,
+	]);
 
 	const itemTiles = memoizedData;
 
@@ -540,7 +587,11 @@ function InventoryMenuComponent({
 					}}
 				/>
 				<CloseButton
-					native={{ Size: new UDim2(0, px(21), 0, px(21)), Position: new UDim2(0, px(855), 0, px(24)) }}
+					native={{
+						Size: new UDim2(0, px(21), 0, px(21)),
+						Position: new UDim2(1, px(-24), 0, px(24)),
+						AnchorPoint: new Vector2(1, 0),
+					}}
 					event={{
 						Activated: () => {
 							handleCloseButton();

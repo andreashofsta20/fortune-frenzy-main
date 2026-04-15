@@ -1,8 +1,7 @@
 package misc
 
 import (
-	"ffinternal-go/utilities"
-	"fmt"
+	"log"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -27,10 +26,8 @@ func NetworkLog(c *fiber.Ctx) error {
 	if err := c.BodyParser(&body); err == nil && len(body.Logs) > 0 {
 		for _, entry := range body.Logs {
 			if entry.Speed > 5.0 {
-				utilities.DiscordLogError("SlowNetworkCall", fmt.Sprintf("%s took %.2fs for player %s (%d)", entry.NetworkName, entry.Speed, entry.Player.Name, entry.Player.ID), map[string]string{
-					"server":   body.ServerID,
-					"response": entry.Response,
-				})
+				log.Printf("[SlowNetworkCall] server=%s network=%s speed=%.2fs player=%s (%d) response=%s",
+					body.ServerID, entry.NetworkName, entry.Speed, entry.Player.Name, entry.Player.ID, entry.Response)
 			}
 		}
 	}

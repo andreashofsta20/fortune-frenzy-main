@@ -7,7 +7,6 @@ import { addCommasToNumber } from "shared/util/number-utils";
 import { brighten } from "client/utils/color-utils";
 import { CaseBattleData } from "typings/APIResponses";
 import { useMotion } from "client/hooks/use-motion";
-import { usePxScale } from "client/hooks/use-scale";
 import { Modding } from "@flamework/core";
 import { ClientStateController } from "client/controllers/ClientStateController";
 import { Button } from "../core/Button";
@@ -76,6 +75,22 @@ function getDisplayedBattleValue(
 	return math.max(total - currentItemValue, 0);
 }
 
+/** Product of UIScale.Scale on ancestors (UIScale is a child of the scaled GuiObject). Used to map AbsoluteSize to layout pixels. */
+function getCumulativeUiScaleProduct(gui: GuiObject): number {
+	let prod = 1;
+	let p: Instance | undefined = gui;
+	while (p) {
+		if (p.IsA("GuiObject")) {
+			const uiScale = p.FindFirstChildOfClass("UIScale");
+			if (uiScale?.IsA("UIScale")) {
+				prod *= uiScale.Scale;
+			}
+		}
+		p = p.Parent ?? undefined;
+	}
+	return prod;
+}
+
 function resolveAvatarThumbnailUserId(
 	playerData: CaseBattleData["players"][number] | undefined,
 	defaultUserId: string,
@@ -100,7 +115,6 @@ export const BattlePlayer = memo(
 	({ battleData, playerPosition, viewingPlayerItems, setViewingPlayerItems }: BattlePlayerProps) => {
 		const clientStateController = Modding.resolveSingleton(ClientStateController);
 		const px = usePx();
-		const pxScale = usePxScale();
 		const playerData = battleData.players.find((p) => p.position === playerPosition);
 		const containerRef = useRef<Frame>(undefined);
 		const hasMountedRef = useRef(false);
@@ -236,7 +250,7 @@ export const BattlePlayer = memo(
 
 			if (!currentPull || !currentCaseData) return;
 
-			const findWinningItem = () => {
+			const findWinningLayoutOrder = () => {
 				const caseItems = currentCaseData.items;
 				if (caseItems.size() === 0) return undefined;
 
@@ -250,20 +264,23 @@ export const BattlePlayer = memo(
 				}
 
 				if (matchingLayoutOrders.size() === 0) return undefined;
-				const selectedOrder = matchingLayoutOrders[math.random(1, matchingLayoutOrders.size()) - 1];
-
-				return (container.GetChildren() as Instance[])
-					.filter((child): child is ImageLabel => child.IsA("ImageLabel"))
-					.find((child) => child.LayoutOrder === selectedOrder);
+				return matchingLayoutOrders[math.random(1, matchingLayoutOrders.size()) - 1];
 			};
 
-			const winningItem = findWinningItem();
-			if (!winningItem) return;
+			const winningLayoutOrder = findWinningLayoutOrder();
+			if (winningLayoutOrder === undefined) return;
 
+			// Layout-space offset so the winning card centers under the viewport. Using AbsolutePosition mixes
+			// screen pixels (after UIScale on MainMenusHolder) with Position.Offset (layout pixels); that lands on the wrong item.
+			const clipFrame = container.Parent as GuiObject | undefined;
 			const calcOffset = () => {
-				const winningItemCenter = winningItem.AbsolutePosition.X + winningItem.AbsoluteSize.X / 2;
-				const containerCenter = container.AbsolutePosition.X + container.AbsoluteSize.X / 2;
-				return (containerCenter - winningItemCenter) / pxScale();
+				if (!clipFrame) return 0;
+				const uiScaleProduct = getCumulativeUiScaleProduct(clipFrame);
+				const clipW = clipFrame.AbsoluteSize.X / uiScaleProduct;
+				const cardW = px(65);
+				const step = cardW - px(2);
+				const itemCenter = winningLayoutOrder * step + cardW / 2;
+				return clipW / 2 - itemCenter;
 			};
 
 			const universalTime = Workspace.GetServerTimeNow() * 1000;

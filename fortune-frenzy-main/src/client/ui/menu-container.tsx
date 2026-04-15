@@ -10,6 +10,8 @@ import {
 	isNavigationVisibleAtom,
 	menuUpscaledAtom,
 } from "client/utils/global-state";
+import { computeMenuHolderScale } from "client/utils/menu-mobile-upscale";
+import { useTouchMenuMobile } from "client/hooks/use-touch-menu-mobile";
 import { Events } from "client/network";
 
 import { MarketplaceMenu } from "./menus/MarketplaceMenu";
@@ -49,6 +51,8 @@ function MenuContainer() {
 	const previousMenu = useAtom(previousMenuAtom);
 	const inventoryOverlayState = useAtom(inventoryOverlayStateAtom);
 	const menuUpscaled = useAtom(menuUpscaledAtom);
+	const touchMenuMobile = useTouchMenuMobile();
+	const menuHolderScale = computeMenuHolderScale(menuUpscaled, touchMenuMobile);
 	const [menuHolderPosition, menuHolderPositionMotion] = useMotion(new UDim2(0.5, 0, 0.5, 0));
 
 	const isMenuVisible = useCallback(
@@ -87,7 +91,7 @@ function MenuContainer() {
 
 	return (
 		<>
-			<MainMenusHolder position={menuHolderPosition} upscaled={menuUpscaled}>
+			<MainMenusHolder position={menuHolderPosition} scale={menuHolderScale}>
 			<ProfilesMenu visible={isMenuVisible(MENUS.PROFILES)} flashMenu={flashMenu} key={"ProfilesMenu"} />
 			<MarketplaceMenu visible={isMenuVisible(MENUS.MARKETPLACE)} flashMenu={flashMenu} key={"MarketplaceMenu"} />
 			<TradingMenu visible={isMenuVisible(MENUS.TRADING)} flashMenu={flashMenu} key={"TradingMenu"} />
@@ -125,7 +129,7 @@ function MenuContainer() {
 				key={"LeaderboardsMenu"}
 			/>
 			</MainMenusHolder>
-			<MainMenusHolder position={menuHolderPosition} upscaled={false}>
+			<MainMenusHolder position={menuHolderPosition} scale={1}>
 				<ItemCasesMenu visible={isMenuVisible(MENUS.ITEM_CASES)} flashMenu={flashMenu} key={"ItemCasesMenu"} />
 			</MainMenusHolder>
 		</>

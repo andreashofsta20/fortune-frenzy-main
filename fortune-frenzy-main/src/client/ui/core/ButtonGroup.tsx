@@ -118,6 +118,12 @@ export function ButtonGroup({
 		direction: Enum.EasingDirection.InOut,
 	};
 
+	useEffect(() => {
+		if (options.indexOf(state) < 0 && options.size() > 0) {
+			setState(options[0]);
+		}
+	}, [options, state, setState]);
+
 	const updateSelectionFrame = () => {
 		const selectedIndex = options.indexOf(state);
 		const selectedDimensions = layout.buttonDimensions[state];

@@ -14,6 +14,7 @@ import { setDecimalPlaces } from "shared/util/number-utils";
 import getPollingCooldown from "server/util/get-polling-cooldown";
 import { getCoinflipJoinValueRange } from "shared/util/coinflip-join-range";
 import { GameEvents } from "server/util/cross-server-channels/GameEvents";
+import { CommerceService } from "./CommerceService";
 
 @Service()
 export class CoinflipService implements OnStart {
@@ -26,12 +27,31 @@ export class CoinflipService implements OnStart {
 		private PlayerManagementService: PlayerManagementService,
 		private ItemManagementService: ItemManagementService,
 		private marketplaceService: MarketplaceService,
+		private commerceService: CommerceService,
 	) {}
 
 	public Coinflips = new Array<Coinflip>();
 
 	private getCoinflipById(id: string): Coinflip | undefined {
 		return this.Coinflips.find((cf) => cf.id === id);
+	}
+
+	/** Onboarding: tie a created coinflip to one VIP-free Call Bot before tutorial completion. */
+	async registerTutorialPendingCoinflip(
+		player: Player,
+		coinflipId: string,
+	): Promise<{ status: "success" | "error"; message?: string }> {
+		const profile = await this.PlayerManagementService.getOnlineProfile(player, true);
+		if (!profile) return { status: "error", message: "Profile not found" };
+		if (profile.Data.TutorialData.Completed) return { status: "error", message: "Tutorial already completed" };
+
+		const coinflip = this.getCoinflipById(coinflipId);
+		if (!coinflip) return { status: "error", message: "Coinflip not found" };
+		if (coinflip.player1.id !== tostring(player.UserId)) return { status: "error", message: "Not your coinflip" };
+		if (coinflip.status !== "waiting_for_player") return { status: "error", message: "Coinflip is not waiting" };
+
+		profile.Data.TutorialData.TutorialPendingCoinflipId = coinflipId;
+		return { status: "success" };
 	}
 
 	private isPlayerInActiveCoinflip(userId: string): boolean {
@@ -423,6 +443,19 @@ export class CoinflipService implements OnStart {
 			return { status: "error", code: 400, message: "Coinflip already has a second player" };
 		}
 
+		const profile = await this.PlayerManagementService.getOnlineProfile(player, true);
+		const pendingId = profile?.Data.TutorialData.TutorialPendingCoinflipId ?? "";
+		const tutorialBotPass =
+			profile !== undefined &&
+			!profile.Data.TutorialData.Completed &&
+			pendingId === coinflipId &&
+			pendingId.size() > 0;
+
+		const vip = await this.commerceService.isSubscribed(player, "VIP");
+		if (!vip.isSubscribed && !tutorialBotPass) {
+			return { status: "error", code: 403, message: "VIP subscription required to call a bot" };
+		}
+
 		const request = await new Request("POST", `/coinflip/call-bot/${coinflipId}`, undefined, {
 			user_id: player.UserId,
 		}).GetResponse();
@@ -454,6 +487,10 @@ export class CoinflipService implements OnStart {
 			updated: [updatedCoinflip],
 			removed: [],
 		});
+
+		if (profile && tutorialBotPass) {
+			profile.Data.TutorialData.TutorialPendingCoinflipId = "";
+		}
 
 		return { status: "success", code: 200 };
 	}

@@ -8,25 +8,17 @@ import (
 )
 
 func SetupTradingRoutes(app *fiber.App) {
+	auth := middleware.Authorization(middleware.AuthTypeServerKey)
+	rlR := middleware.RateLimitRead()
+	rlW := middleware.RateLimitWrite()
+
 	trades := app.Group("/trades")
 
-	trades.Get("/:userIds",
-		middleware.Authorization(middleware.AuthTypeServerKey),
-		handlers.GetTrades,
-	)
+	trades.Get("/:userIds", rlR, auth, handlers.GetTrades)
 
-	trades.Post("/create",
-		middleware.Authorization(middleware.AuthTypeServerKey),
-		handlers.CreateTrade,
-	)
+	trades.Post("/create", rlW, auth, handlers.CreateTrade)
 
-	trades.Post("/:tradeId/accept",
-		middleware.Authorization(middleware.AuthTypeServerKey),
-		handlers.AcceptTrade,
-	)
+	trades.Post("/:tradeId/accept", rlW, auth, handlers.AcceptTrade)
 
-	trades.Post("/:tradeId/cancel",
-		middleware.Authorization(middleware.AuthTypeServerKey),
-		handlers.CancelTrade,
-	)
+	trades.Post("/:tradeId/cancel", rlW, auth, handlers.CancelTrade)
 }

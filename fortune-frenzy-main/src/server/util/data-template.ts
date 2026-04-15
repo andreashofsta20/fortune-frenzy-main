@@ -17,6 +17,10 @@ export class DataTemplate {
 		CompletedAt: 0,
 		RewardClaimed: false,
 		StarterCashGranted: false,
+		/** Player skipped the guided offer at login; no tutorial UI until they complete via other path if added later. */
+		DeclinedGuidedTour: false,
+		/** While onboarding: coinflip id allowed for one VIP-free Call Bot (must match this id). Cleared after use or on tutorial complete. */
+		TutorialPendingCoinflipId: "" as string,
 	};
 
 	RecentActivity: {

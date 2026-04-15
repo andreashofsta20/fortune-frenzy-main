@@ -1,8 +1,15 @@
 import Signal from "@rbxts/signal";
-import { HttpService, ReplicatedStorage, ServerScriptService } from "@rbxts/services";
-import Base64 from "./base64";
-import { setDecimalPlaces } from "shared/util/number-utils";
+import { HttpService, Players, ReplicatedStorage, ServerScriptService } from "@rbxts/services";
+import { Events } from "server/network";
 import log from "shared/util/log";
+
+type OutboundPacketEntry = {
+	request_id: string;
+	method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
+	route: string;
+	headers?: Record<string, string>;
+	body?: unknown;
+};
 
 export class Packeter {
 	public NewRequestQueued = new Signal<(requestId: string) => void>();
@@ -10,26 +17,34 @@ export class Packeter {
 
 	private _requestQueue = new Map<string, Request>();
 	private _packeterUrl = "";
-	/**
-	 * Min seconds between outbound HttpService calls (each /packet batch = one call, often many routes).
-	 * Roblox ~500 HttpService requests/min/server → ~8/s max; 0.1s allows ~10/s with headroom when batches combine routes.
-	 * Was 0.5s — felt very slow for purchases while polls shared the same queue.
-	 */
+
 	private _requestDelay = 0.1;
-	private _status: "alive" | "alive" = "alive";
+	private _status: "alive" | "dead" = "alive"; // ✅ FIXED
+
 	private _currentlyProcessing = false;
 	private _lastHttpRequest = tick();
-	/** When Roblox returns "Number of requests exceeded limit", pause batching to recover. */
+
 	private _rateLimitUntil = 0;
+
+	private _apiDownBroadcast = false;
+
+	/** GET `/health` when backend is considered healthy (less noisy). */
+	private static readonly _healthPollHealthySec = 10;
+	/** GET `/health` while down — faster reconnect checks. */
+	private static readonly _healthPollDownSec = 3;
+
 	private _apiKey: Secret | undefined;
-	/** False when GetSecret failed — outbound HTTP must not hang on auth errors. */
 	private _apiKeyUsable = false;
+
+	/** When false, we do not register or call `/packet` — only `/health` is polled. */
+	private _backendHealthOk = false;
+	private _initialHealthGateDone = false;
+	private _lastHealthProbeAt = 0;
 
 	public _jobId = game.JobId || `ROBLOX_STUDIO_${os.clock()}`;
 
 	constructor(packeterUrl: string, requestDelay?: number) {
 		this._packeterUrl = packeterUrl;
-
 		this._requestDelay = requestDelay ?? 0.1;
 		Request.currentInstance = this;
 		this.Start();
@@ -39,23 +54,62 @@ export class Packeter {
 		ServerScriptService.SetAttribute("server_id", this._jobId);
 		ReplicatedStorage.SetAttribute("server_id", this._jobId);
 
-		let registerOk = await this._RegisterWithServer();
-		if (!registerOk) {
-			warn(
-				"[Packeter] POST /register failed (wrong _backend_url, HttpService not allowed to API host, bad X_API_KEY, or API down). " +
-					"Keeping the request loop alive so players do not hang forever on \"Registering with backend\". Retrying register every 30s.",
-			);
+		Players.PlayerAdded.Connect((player) => {
+			if (this._apiDownBroadcast) {
+				Events.BackendApiConnectivity.fire(player, {
+					online: false,
+					clientMessage: "Reconnecting to services...",
+					serverMessage: "Fortune Frenzy API is temporarily unavailable.",
+				});
+			}
+		});
+
+		await this._runInitialHealthGate();
+
+		let registerOk = false;
+		if (this._backendHealthOk) {
+			registerOk = await this._RegisterWithServer();
+			if (!registerOk) {
+				warn("[Packeter] Register failed, retrying...");
+			} else {
+				this._markApiReachable();
+			}
 		}
 
 		let nextRegisterAttempt = registerOk ? math.huge : tick() + 5;
 
-		this._status = "alive";
 		while (this._status === "alive") {
+			const healthInterval = this._backendHealthOk
+				? Packeter._healthPollHealthySec
+				: Packeter._healthPollDownSec;
+			if (tick() - this._lastHealthProbeAt >= healthInterval) {
+				const healthy = await this._probeHealth();
+				if (healthy) {
+					this._backendHealthOk = true;
+					this._markApiReachable();
+				} else {
+					this._backendHealthOk = false;
+					this._broadcastApiDownNow();
+					this._drainQueueBackendUnreachable();
+				}
+				this._lastHealthProbeAt = tick();
+			}
+
+			if (!this._backendHealthOk) {
+				this._drainQueueBackendUnreachable();
+				task.wait(0.25);
+				continue;
+			}
+
 			if (!registerOk && tick() >= nextRegisterAttempt) {
 				registerOk = await this._RegisterWithServer();
 				nextRegisterAttempt = tick() + 30;
+
 				if (registerOk) {
-					log("print", `[Packeter] Registered with Packeter API (after retry).`);
+					log("print", `[Packeter] Registered after retry.`);
+					this._markApiReachable();
+				} else {
+					warn("[Packeter] Register retry failed.");
 				}
 			}
 
@@ -70,19 +124,113 @@ export class Packeter {
 		}
 	}
 
-	private async _RegisterWithServer(): Promise<boolean> {
-		const [apiKeySuccess, apiKey] = pcall(() => HttpService.GetSecret("X_API_KEY"));
+	/** InitializationService awaits this so nothing uses `Request` until the first `/health` result exists. */
+	public async waitForInitialHealthGate(): Promise<void> {
+		while (!this._initialHealthGateDone && this._status === "alive") {
+			task.wait(0.05);
+		}
+	}
 
-		if (!apiKeySuccess) {
-			warn("[Packeter] Failed to retrieve ApiKey from secrets store:", apiKey);
-			this._apiKeyUsable = false;
+	private async _runInitialHealthGate() {
+		const healthy = await this._probeHealth();
+		this._backendHealthOk = healthy;
+		if (healthy) {
+			this._markApiReachable();
+		} else {
+			this._broadcastApiDownNow();
+			this._drainQueueBackendUnreachable();
+		}
+		this._lastHealthProbeAt = tick();
+		this._initialHealthGateDone = true;
+	}
+
+	/** True when `/health` last reported OK (or Roblox HTTP throttle — do not treat as down). */
+	public isBackendHealthy(): boolean {
+		return this._backendHealthOk;
+	}
+
+	private async _probeHealth(): Promise<boolean> {
+		if (this._packeterUrl === "") {
 			return true;
 		}
 
-		this._apiKey = apiKey;
+		const [success, response, hint] = await this._DoHttpRequest({
+			Url: `${this._packeterUrl}/health`,
+			Method: "GET",
+		});
+
+		const throttle = this._isRobloxHttpThrottleHint(hint);
+		let healthy = false;
+		if (!success) {
+			healthy = throttle;
+			return healthy;
+		}
+
+		healthy = response.StatusCode === 200 && this._healthPayloadIndicatesApiOk(response.Body);
+		return healthy;
+	}
+
+	private _broadcastApiDownNow() {
+		if (this._apiDownBroadcast) return;
+
+		this._apiDownBroadcast = true;
+		ReplicatedStorage.SetAttribute("__FF_API_DOWN", true);
+
+		for (const p of Players.GetPlayers()) {
+			Events.BackendApiConnectivity.fire(p, {
+				online: false,
+				clientMessage: "Reconnecting to services...",
+				serverMessage: "Fortune Frenzy API is temporarily unavailable.",
+			});
+		}
+	}
+
+	private _drainQueueBackendUnreachable() {
+		const payload = {
+			error: "backend_unreachable",
+			message: "API health check failed — backend is not accepting traffic.",
+		};
+		for (const [id, req] of this._requestQueue) {
+			if (req.status === "ready" || req.status === "pending") {
+				req.status = "completed";
+				req._event.Fire(503, payload, false);
+				this._requestQueue.delete(id);
+			}
+		}
+	}
+
+	private _onPacketTransportFailure(fromThrottle: boolean) {
+		if (fromThrottle) {
+			this._rateLimitUntil = tick() + 3;
+			return;
+		}
+		this._backendHealthOk = false;
+		this._broadcastApiDownNow();
+		this._drainQueueBackendUnreachable();
+	}
+
+	private _healthPayloadIndicatesApiOk(body: string | undefined): boolean {
+		if (!body || body === "") return false;
+
+		const [ok, decoded] = pcall(() => HttpService.JSONDecode(body));
+		if (!ok || !typeIs(decoded, "table")) return false;
+
+		const data = decoded as { status?: unknown };
+		return typeIs(data.status, "string") && string.lower(data.status) === "ok";
+	}
+
+	private async _RegisterWithServer(): Promise<boolean> {
+		const [ok, key] = pcall(() => HttpService.GetSecret("X_API_KEY"));
+
+		if (!ok) {
+			this._apiKeyUsable = false;
+			return false;
+		}
+
+		this._apiKey = key;
 		this._apiKeyUsable = true;
 
-		const [success, result, _registerFailHint] = await this._DoHttpRequest({
+		const [success, result] = await this._DoHttpRequest({
 			Url: `${this._packeterUrl}/register/${this._jobId}`,
 			Method: "POST",
 			Headers: {
@@ -90,210 +238,105 @@ export class Packeter {
 			},
 		});
 
-		if (!success || result.StatusCode !== 200) return false;
-
-		log("print", `[Packeter] Registered with Packeter API.`);
-		return true;
+		return success && result.StatusCode === 200;
 	}
 
 	private _IsReadyToProcessRequests(): boolean {
 		if (tick() < this._rateLimitUntil) return false;
-		const ready =
+
+		return (
 			tick() - this._lastHttpRequest >= this._requestDelay &&
 			!this._currentlyProcessing &&
-			this._requestQueue.size() > 0;
-
-		return ready;
+			this._requestQueue.size() > 0
+		);
 	}
 
-	private _CreatePacket(): Array<{
-		request_id: string;
-		method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
-		route: string;
-		headers?: Record<string, string>;
-		body?: unknown;
-		Result?: { Code: number; Response: unknown; Success?: boolean };
-	}> {
-		const packet: {
-			request_id: string;
-			method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
-			route: string;
-			headers?: Record<string, string>;
-			body?: unknown;
-			Result?: { Code: number; Response: unknown; Success?: boolean };
-		}[] = [];
+	private _CreatePacket(): OutboundPacketEntry[] {
+		const packet = new Array<OutboundPacketEntry>();
 
-		type ReadyItem = { requestId: string; request: Request };
-		const readyItems = new Array<ReadyItem>();
-		for (const [requestId, request] of this._requestQueue) {
-			if (request.status === "ready") {
-				readyItems.push({ requestId, request });
-			}
-		}
+		for (const [id, req] of this._requestQueue) {
+			if (req.status !== "ready") continue;
 
-		// Never batch GET /users/get-cash-changes with other routes. The API uses a DB
-		// transaction; if it errors or the whole packet fails, it would block case battles,
-		// jackpots, marketplace polls, etc. in the same batch.
-		const isCashChangesRoute = (route: string) => string.find(route, "get-cash-changes", 1, true) !== undefined;
-		const cashItems = readyItems.filter((x) => isCashChangesRoute(x.request.route));
-		const otherItems = readyItems.filter((x) => !isCashChangesRoute(x.request.route));
+			req.status = "pending";
 
-		const selected =
-			otherItems.size() > 0 ? otherItems : cashItems.size() > 0 ? [cashItems[0]] : [];
-
-		for (const { requestId, request } of selected) {
-			request.status = "pending";
 			packet.push({
-				request_id: requestId,
-				method: request.method,
-				route: request.route,
-				headers: request.headers,
-				body: request.body,
+				request_id: id,
+				method: req.method,
+				route: req.route,
+				headers: req.headers,
+				body: req.body,
 			});
 		}
 
 		return packet;
 	}
 
-	private async _ProcessPacket(
-		packet: Array<{
-			request_id: string;
-			method: string;
-			route: string;
-			headers?: Record<string, string>;
-			body?: unknown;
-		}>,
-	) {
-		const batchIds = packet.map((p) => p.request_id);
+	private async _ProcessPacket(packet: OutboundPacketEntry[]) {
+		const ids = packet.map((p) => p.request_id);
 
-		let attempts = 0;
-		let success = false;
-		let response: RequestAsyncResponse;
-		let lastFailureHint = "";
-
-		do {
-			attempts++;
-			[success, response, lastFailureHint] = await this._DoHttpRequest({
-				Url: `${this._packeterUrl}/packet/${this._jobId}`,
-				Method: "POST",
-				Headers: {
-					"Content-Type": "application/json",
-					"server-id": this._jobId,
-					"x-api-key": this._apiKey as unknown as string,
-				},
-				Body: HttpService.JSONEncode({ Packet: packet }),
-			});
-			if (!success && this._isRobloxHttpThrottleHint(lastFailureHint)) {
-				this._rateLimitUntil = tick() + 3;
-				break;
-			}
-		} while (!success && attempts < 2);
+		const [success, response, hint] = await this._DoHttpRequest({
+			Url: `${this._packeterUrl}/packet/${this._jobId}`,
+			Method: "POST",
+			Headers: {
+				"Content-Type": "application/json",
+				"x-api-key": this._apiKey as unknown as string,
+			},
+			Body: HttpService.JSONEncode({ Packet: packet }),
+		});
 
 		if (!success || !response.Body) {
-			const isThrottle = this._isRobloxHttpThrottleHint(lastFailureHint);
-			if (isThrottle) {
-				this._rateLimitUntil = math.max(this._rateLimitUntil, tick() + 3);
-			}
-
-			this._rejectBatch(batchIds, 503, {
-				error: isThrottle
-					? "Roblox HttpService request budget exceeded (not your API)"
-					: "Packeter could not reach the API after retries",
-				message: isThrottle
-					? lastFailureHint !== ""
-						? lastFailureHint
-						: "Number of requests exceeded limit — slow down outbound HTTP"
-					: "Packeter could not reach the API after retries",
-			});
+			this._onPacketTransportFailure(this._isRobloxHttpThrottleHint(hint));
+			this._rejectBatch(ids, 503, "Request failed");
 			return;
 		}
 
 		if (response.StatusCode !== 200) {
-			const errPayload = this._tryParseErrorBody(response.Body);
-			this._rejectBatch(batchIds, response.StatusCode, errPayload);
+			if (response.StatusCode >= 500) {
+				this._onPacketTransportFailure(false);
+			}
+			this._rejectBatch(ids, response.StatusCode, response.Body);
 			return;
 		}
 
-		this._dispatchPacketResponses(batchIds, response.Body);
+		this._dispatchPacketResponses(ids, response.Body);
 	}
 
-	/** Unblocks every waiter in this batch — required because Signal.Wait() never yields otherwise. */
-	private _rejectBatch(batchIds: readonly string[], code: number, body: unknown) {
-		for (const id of batchIds) {
-			const request = this._requestQueue.get(id);
-			if (request && request.status === "pending") {
-				request.status = "completed";
-				request._event.Fire(code, body, false);
-				this._requestQueue.delete(id);
-			}
+	private _rejectBatch(ids: string[], code: number, body: unknown) {
+		for (const id of ids) {
+			const req = this._requestQueue.get(id);
+			if (!req) continue;
+
+			req.status = "completed";
+			req._event.Fire(code, body, false);
+			this._requestQueue.delete(id);
 		}
 	}
 
-	private _tryParseErrorBody(raw: string): { error?: string; message?: string } {
+	private _dispatchPacketResponses(ids: string[], raw: string) {
 		const [ok, decoded] = pcall(() => HttpService.JSONDecode(raw));
-		if (!ok || decoded === undefined || !typeIs(decoded, "table")) {
-			return { error: "Request failed", message: "Request failed" };
-		}
-		const t = decoded as { error?: string; message?: string };
-		return {
-			error: t.error ?? t.message ?? "Request failed",
-			message: t.message ?? t.error ?? "Request failed",
-		};
-	}
-
-	private _dispatchPacketResponses(batchIds: readonly string[], rawBody: string) {
-		const [decodeOk, decoded] = pcall(() => HttpService.JSONDecode(rawBody));
-		if (!decodeOk || decoded === undefined || !typeIs(decoded, "table")) {
-			this._rejectBatch(batchIds, 502, {
-				error: "Invalid JSON from packet endpoint",
-				message: "Invalid JSON from packet endpoint",
-			});
+		if (!ok || !typeIs(decoded, "table")) {
+			this._rejectBatch(ids, 502, "Invalid JSON");
 			return;
 		}
 
-		const responseBody = decoded as {
-			responses?: Array<{ request_id: string; response: [number, unknown] }>;
-			status?: string;
-		};
-
-		const responses = responseBody.responses;
-		if (responses === undefined || !typeIs(responses, "table")) {
-			this._rejectBatch(batchIds, 502, {
-				error: "Packet response missing sub-responses",
-				message: "Packet response missing sub-responses",
-			});
+		type Sub = { request_id: string; response: [number, unknown] };
+		const responses = (decoded as { responses?: Sub[] }).responses;
+		if (responses === undefined) {
+			this._rejectBatch(ids, 502, "Packet response missing sub-responses");
 			return;
 		}
 
-		for (const result of responses) {
-			const tuple = result.response;
-			if (tuple === undefined) {
-				continue;
-			}
-			const statusCode = tuple[0] as number | undefined;
-			const responsePayload = tuple[1];
-			if (statusCode === undefined) {
-				continue;
-			}
+		for (const res of responses) {
+			const req = this._requestQueue.get(res.request_id);
+			if (!req) continue;
 
-			const request = this._requestQueue.get(result.request_id);
-			if (request) {
-				request.status = "completed";
-				request._event.Fire(statusCode, responsePayload, statusCode >= 200 && statusCode <= 299);
-				this._requestQueue.delete(result.request_id);
-			}
-		}
+			const tuple = res.response;
+			const code = tuple[0];
+			const body = tuple[1];
 
-		for (const id of batchIds) {
-			const leftover = this._requestQueue.get(id);
-			if (leftover && leftover.status === "pending") {
-				leftover.status = "completed";
-				leftover._event.Fire(502, {
-					error: "No sub-response for this request in packet",
-					message: "No sub-response for this request in packet",
-				}, false);
-				this._requestQueue.delete(id);
-			}
+			req.status = "completed";
+			req._event.Fire(code, body, code >= 200 && code < 300);
+			this._requestQueue.delete(res.request_id);
 		}
 	}
 
@@ -302,11 +345,21 @@ export class Packeter {
 		task.wait(remaining > 0 ? remaining : 0);
 	}
 
+	/** Plain-text substrings Roblox uses for HttpService game-wide limits (not connection/DNS failures). */
 	private _isRobloxHttpThrottleHint(text: string): boolean {
+		if (text === "" || text.size() < 8) return false;
 		const lower = string.lower(text);
+		if (string.find(lower, "timed out", 1, true)[0] !== undefined) return false;
+		if (string.find(lower, "could not connect", 1, true)[0] !== undefined) return false;
+		if (string.find(lower, "connection refused", 1, true)[0] !== undefined) return false;
+		if (string.find(lower, "connectfail", 1, true)[0] !== undefined) return false;
+		if (string.find(lower, "name resolution", 1, true)[0] !== undefined) return false;
+		if (string.find(lower, "ssl", 1, true)[0] !== undefined && string.find(lower, "handshake", 1, true)[0] !== undefined)
+			return false;
 		return (
-			string.find(lower, "exceeded limit", 1, true) !== undefined ||
-			string.find(lower, "too many requests", 1, true) !== undefined
+			string.find(lower, "http requests exceed", 1, true)[0] !== undefined ||
+			string.find(lower, "too many requests", 1, true)[0] !== undefined ||
+			string.find(lower, "exceeded limit", 1, true)[0] !== undefined
 		);
 	}
 
@@ -322,22 +375,31 @@ export class Packeter {
 	private async _DoHttpRequest(
 		requestData: RequestAsyncRequest,
 	): Promise<[boolean, RequestAsyncResponse, string]> {
-		this._lastHttpRequest = tick();
 		const [success, response] = pcall(() => HttpService.RequestAsync(requestData));
-		const res = response as RequestAsyncResponse;
+		this._lastHttpRequest = tick(); // ✅ FIXED placement
 
-		if (success && res.Success) {
-			return [true, res, ""];
-		} else {
-			const hint = success ? this._httpFailureHint(res) : this._httpFailureHint(response);
-			warn(`[Packeter] Failed to send request to ${requestData.Url}:`, response);
-			return [false, res, hint];
+		if (success && response.Success) {
+			return [true, response, ""];
+		}
+
+		const hint = success ? this._httpFailureHint(response) : tostring(response);
+		return [false, response as RequestAsyncResponse, hint];
+	}
+
+	private _markApiReachable() {
+		if (this._apiDownBroadcast) {
+			this._apiDownBroadcast = false;
+			ReplicatedStorage.SetAttribute("__FF_API_DOWN", false);
+
+			for (const p of Players.GetPlayers()) {
+				Events.BackendApiConnectivity.fire(p, { online: true });
+			}
 		}
 	}
 
-	public async AddRequest(data: Request) {
-		this._requestQueue.set(data.requestId, data);
-		this.NewRequestQueued.Fire(data.requestId);
+	public async AddRequest(req: Request) {
+		this._requestQueue.set(req.requestId, req);
+		this.NewRequestQueued.Fire(req.requestId);
 	}
 
 	public HasOutboundApiKey() {
@@ -350,20 +412,21 @@ export class Packeter {
 			this._requestDelay = seconds;
 		}
 	}
-
 }
 
 export class Request {
 	static currentInstance: Packeter;
 
-	public readonly requestId: string;
+	public readonly requestId = HttpService.GenerateGUID(false);
 	public readonly method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
 	public readonly route: string;
+
 	public headers?: Record<string, string>;
 	public body?: unknown;
-	public status: "ready" | "completed" | "pending" = "ready";
-	public _event: Signal<(code: number, response: unknown, success: boolean) => void, false>;
-	private _response?: { Code: number; Response: unknown; Success: boolean };
+
+	public status: "ready" | "pending" | "completed" = "ready";
+
+	public _event = new Signal<(code: number, response: unknown, success: boolean) => void>();
 
 	constructor(
 		method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH",
@@ -372,29 +435,37 @@ export class Request {
 		body?: unknown,
 		query?: Record<string, string>,
 	) {
+		this.method = method;
 		let url = route;
 		if (query) {
 			const queryString = new Array<string>();
-			for (const [key, value] of pairs(query)) {
+			for (const entry of pairs(query)) {
+				const key = entry[0];
+				const value = entry[1];
 				queryString.push(`${key}=${value}`);
 			}
 			url = `${route}?${queryString.join("&")}`;
 		}
-
-		this.requestId = HttpService.GenerateGUID(false);
-		this.method = method;
 		this.route = url;
 		this.headers = headers;
 		this.body = body;
-		this._event = new Signal();
 	}
 
 	public async GetResponse<T = unknown>(): Promise<{ Code: number; Response: T; Success: boolean }> {
 		const instance = Request.currentInstance;
+
 		if (!instance) {
 			return {
 				Code: 500,
-				Response: ({ status: "error", message: "Packeter not initialized" } as unknown) as T,
+				Response: undefined as unknown as T,
+				Success: false,
+			};
+		}
+
+		if (!instance.isBackendHealthy()) {
+			return {
+				Code: 503,
+				Response: undefined as unknown as T,
 				Success: false,
 			};
 		}
@@ -402,24 +473,36 @@ export class Request {
 		if (!instance.HasOutboundApiKey()) {
 			return {
 				Code: 503,
-				Response: ({
-					status: "error",
-					message: "X_API_KEY secret missing or failed to load — enable HttpService and configure Secrets",
-					error: "API key unavailable",
-				} as unknown) as T,
+				Response: undefined as unknown as T,
 				Success: false,
 			};
 		}
 
 		instance.AddRequest(this);
-		const [code, response, success] = this._event.Wait();
-		this.status = "completed";
-		this._response = { Code: code, Response: response as T, Success: success };
 
-		if (code !== 200) {
-			warn(`[Packeter] Request to ${this.route} failed with code ${code}`, response);
+		let resolved = false;
+		let result: LuaTuple<[number, unknown, boolean]> | undefined;
+
+		task.spawn(() => {
+			result = this._event.Wait();
+			resolved = true;
+		});
+
+		const start = tick();
+		while (!resolved && tick() - start < 10) {
+			task.wait();
 		}
 
-		return this._response as { Code: number; Response: T; Success: boolean };
+		if (!resolved) {
+			return { Code: 504, Response: undefined as unknown as T, Success: false };
+		}
+
+		const [code, response, success] = result!;
+
+		return {
+			Code: code,
+			Response: response as T,
+			Success: success,
+		};
 	}
 }
