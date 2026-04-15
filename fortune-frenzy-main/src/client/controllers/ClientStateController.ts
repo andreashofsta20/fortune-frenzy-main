@@ -3,7 +3,7 @@ import { ContentProvider, MarketplaceService, Players, ReplicatedStorage } from 
 import Signal from "@rbxts/signal";
 import { peek, subscribe } from "@rbxts/charm";
 import { Functions, Events } from "client/network";
-import { activeMenuAtom, isNavigationVisibleAtom } from "client/utils/global-state";
+import { activeMenuAtom, globalMinigameStatsRevisionAtom, isNavigationVisibleAtom } from "client/utils/global-state";
 import { palette } from "client/utils/palette";
 import { requestServer } from "client/utils/send-function";
 import { addCommasToNumber, setDecimalPlaces } from "shared/util/number-utils";
@@ -990,6 +990,7 @@ export class ClientStateController implements OnStart {
 		Events.MinigamesUpdated.connect((globalData, localData) => {
 			this.GlobalMinigameData = globalData;
 			this.LocalMinigameData = localData;
+			globalMinigameStatsRevisionAtom((n: number) => n + 1);
 		});
 	}
 

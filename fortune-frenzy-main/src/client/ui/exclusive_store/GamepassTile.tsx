@@ -41,6 +41,8 @@ interface GamepassTileProps<T extends "gamepass" | "subscription"> {
 	id: T extends "gamepass" ? number : string;
 	/** Server subscription row (e.g. VIP) for owned state and time remaining in the shop. */
 	subscriptionRow?: SubscriptionData;
+	/** Profile says this gamepass is owned (`GamepassStatuses`). */
+	gamepassOwned?: boolean;
 }
 
 // Type guard to check if info is GamePassProductInfo
@@ -65,6 +67,7 @@ const GamepassTile = React.memo(
 		image,
 		id,
 		subscriptionRow,
+		gamepassOwned = false,
 	}: GamepassTileProps<T>) => {
 		const px = usePx();
 		const ySize = option === "gamepass" ? px(120) : px(150);
@@ -75,6 +78,8 @@ const GamepassTile = React.memo(
 			stringid === VIP_SUBSCRIPTION_PRODUCT_ID &&
 			isSubscriptionDataActive(subscriptionRow);
 
+		const ownedAppearance = vipOwned || (option === "gamepass" && gamepassOwned);
+
 		const buttonText =
 			option === "subscription"
 				? vipOwned
@@ -82,9 +87,11 @@ const GamepassTile = React.memo(
 					: stringid === VIP_SUBSCRIPTION_PRODUCT_ID
 						? `Subscribe (\u{E002}1,000/mo)`
 						: "Subscribe"
-				: isGamePassInfo(info)
-					? `Buy (\u{E002}${formatWithSuffix(info.PriceInRobux ?? 0)})`
-					: "Buy";
+				: gamepassOwned
+					? "Owned"
+					: isGamePassInfo(info)
+						? `Buy (\u{E002}${formatWithSuffix(info.PriceInRobux ?? 0)})`
+						: "Buy";
 
 		return (
 			<frame BackgroundTransparency={1} Size={new UDim2(1, 0, 0, ySize)} LayoutOrder={layoutOrder}>
@@ -97,12 +104,13 @@ const GamepassTile = React.memo(
 					weight="Medium"
 					text={buttonText}
 					textSize={px(18)}
-					textColor={vipOwned ? palette.midText : setValue(color, 30)}
-					backgroundColor={vipOwned ? palette.background4 : color}
-					enabled={option === "gamepass" ? true : !vipOwned}
+					textColor={ownedAppearance ? palette.midText : setValue(color, 30)}
+					backgroundColor={ownedAppearance ? palette.background4 : color}
+					enabled={option === "gamepass" ? !gamepassOwned : !vipOwned}
 					event={{
 						Activated: () => {
 							if (option === "gamepass") {
+								if (gamepassOwned) return;
 								isLoadingAtom(true);
 								MarketplaceService.PromptGamePassPurchase(Players.LocalPlayer, id as number);
 								MarketplaceService.PromptGamePassPurchaseFinished.Once(() => isLoadingAtom(false));

@@ -27,7 +27,7 @@ import { brighten, setValue } from "client/utils/color-utils";
 import { setInterval } from "@rbxts/set-timeout";
 import { UserHeadshot } from "./CoinflipGridItem";
 import { addCommasToNumber, formatWithSuffix, setDecimalPlaces } from "shared/util/number-utils";
-import { MarketplaceService, Players, RunService } from "@rbxts/services";
+import { HttpService, MarketplaceService, Players, RunService } from "@rbxts/services";
 import { Functions } from "client/network";
 import { ViewportWithCamera } from "../tools/ViewportWithCamera";
 import findItemsInRange from "client/utils/find-items-in-range";
@@ -61,6 +61,34 @@ enum JoinableState {
 
 const COINFLIP_VIEW_AUTO_CLOSE_DELAY_SECONDS = 10;
 
+// #region agent log
+const _AGENT_INGEST = "http://127.0.0.1:7528/ingest/1b6715ac-5dbe-4e21-b0fb-3326720d79ad";
+function _agentDbgCoinflipViewing(
+	location: string,
+	message: string,
+	hypothesisId: string,
+	data: Record<string, unknown>,
+) {
+	const [ok] = pcall(() =>
+		HttpService.RequestAsync({
+			Url: _AGENT_INGEST,
+			Method: "POST",
+			Headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "a18dcf" },
+			Body: HttpService.JSONEncode({
+				sessionId: "a18dcf",
+				location,
+				message,
+				data,
+				timestamp: math.floor(tick() * 1000),
+				hypothesisId,
+				runId: "pre-fix",
+			}),
+		}),
+	);
+	void ok;
+}
+// #endregion
+
 const UserSection = ({
 	player,
 	coin,
@@ -93,6 +121,7 @@ const UserSection = ({
 				position={player === 1 ? new UDim2(0, px(15), 0.5, 0) : new UDim2(1, px(-15), 0.5, 0)}
 				anchorPoint={player === 1 ? new Vector2(0, 0.5) : new Vector2(1, 0.5)}
 				coin={coin}
+				occupied={exists}
 			/>
 			<imagelabel
 				Image="rbxassetid://86092120336165"
@@ -398,6 +427,8 @@ export function CoinflipViewing({ CoinflipId, visible, handleCloseButton, childr
 	const [statusIndicatorStatus, setStatusIndicatorStatus] = React.useState<"light" | "dark">("light");
 	const [coinSpinTarget, setCoinSpinTarget] = React.useState<"heads" | "tails" | "none">("none");
 	const [joinable, setJoinable] = React.useState<JoinableState>(JoinableState.Loading);
+	/** Bumps when inventory or item catalog updates so we re-check stake combinations (initial effect ran too early). */
+	const [stakeEligibilityRevision, setStakeEligibilityRevision] = React.useState(0);
 	const [coinCameraCFrame, setCoinCameraCFrame] = React.useState<CFrame>(CFrame.lookAt(Vector3.zero, Vector3.zero));
 	const [coinCameraFOV, setCoinCameraFOV] = React.useState(75);
 	const [viewportFrameSize, viewportFrameSizeMotion] = useMotion(new UDim2(0, px(270), 0, px(270)));
@@ -407,10 +438,9 @@ export function CoinflipViewing({ CoinflipId, visible, handleCloseButton, childr
 	const [coinGlowColor, coinGlowColorMotion] = useMotion(Color3.fromRGB(25, 26, 35));
 	const [confirmTextTransparency, confirmTextTransparencyMotion] = useMotion(1);
 
-	// Consolidate initialization and cleanup
+	// Sync coinflip row from controller + status blink (joinability is recomputed in a separate effect).
 	useEffect(() => {
 		if (!visible) return;
-		setJoinable(JoinableState.Loading);
 
 		const clearInterval = setInterval(
 			() => setStatusIndicatorStatus((prev) => (prev === "light" ? "dark" : "light")),
@@ -422,31 +452,106 @@ export function CoinflipViewing({ CoinflipId, visible, handleCloseButton, childr
 			if (!data) handleCloseButton();
 		});
 
-		const findItems = async (minValue: number, maxValue: number, minItems: number, maxItems: number) => {
-			setJoinable(JoinableState.Loading);
-			const matchedItems = await findItemsInRange(minValue, maxValue, minItems, maxItems);
-			setJoinable(matchedItems.size() > 0 ? JoinableState.Joinable : JoinableState.Unjoinable);
-		};
-
-		const coinflipData = clientStateController.Coinflips.find((coinflip) => coinflip.id === CoinflipId);
-		setCoinflipData(coinflipData);
-		if (coinflipData) {
-			const player1Value = coinflipData.player1_items.reduce((acc, item) => {
-				const itemId = resolveStakeItemId(item);
-				const itemData = clientStateController.ItemInfo.get(itemId);
-				return itemData ? acc + itemData.value : acc;
-			}, 0);
-			const { minimumValue, maximumValue } = getCoinflipJoinValueRange(player1Value);
-			findItems(minimumValue, maximumValue, 1, 10);
-		} else {
-			setJoinable(JoinableState.Unjoinable);
-		}
+		const row = clientStateController.Coinflips.find((coinflip) => coinflip.id === CoinflipId);
+		setCoinflipData(row);
 
 		return () => {
 			connection.Disconnect();
 			clearInterval();
 		};
 	}, [CoinflipId, visible]);
+
+	// Re-check join stakes when the flip updates, inventory loads, or item values arrive (fixes false "can't match").
+	useEffect(() => {
+		const bump = () => setStakeEligibilityRevision((n) => n + 1);
+		const invConn = clientStateController.InventoryChangedEvent.Connect(bump);
+		const infoConn = clientStateController.ItemInfoChangedEvent.Connect(bump);
+		return () => {
+			invConn.Disconnect();
+			infoConn.Disconnect();
+		};
+	}, [clientStateController]);
+
+	useEffect(() => {
+		if (!visible) return;
+
+		if (!coinflipData) {
+			setJoinable(JoinableState.Loading);
+			return;
+		}
+
+		if (coinflipData.status !== "waiting_for_player" || coinflipData.player2) {
+			// #region agent log
+			_agentDbgCoinflipViewing("CoinflipViewing.tsx:joinEffect", "early_exit_status_or_p2", "H1", {
+				status: coinflipData.status,
+				hasPlayer2: coinflipData.player2 !== undefined,
+			});
+			// #endregion
+			return;
+		}
+
+		const localId = tostring(Players.LocalPlayer.UserId);
+		if (localId === coinflipData.player1.id) {
+			// #region agent log
+			_agentDbgCoinflipViewing("CoinflipViewing.tsx:joinEffect", "owner_branch_joinable", "H1", {
+				isLobbyOwner: true,
+			});
+			// #endregion
+			setJoinable(JoinableState.Joinable);
+			return;
+		}
+
+		const player1Value = coinflipData.player1_items.reduce((acc, item) => {
+			const itemId = resolveStakeItemId(item);
+			const itemData = clientStateController.ItemInfo.get(itemId);
+			return itemData ? acc + itemData.value : acc;
+		}, 0);
+
+		const p1HasItems = coinflipData.player1_items.size() > 0;
+		if (p1HasItems && player1Value <= 0) {
+			// #region agent log
+			_agentDbgCoinflipViewing("CoinflipViewing.tsx:joinEffect", "p1_value_loading_missing_iteminfo", "H2", {
+				p1HasItems,
+				player1Value,
+				p1ItemCount: coinflipData.player1_items.size(),
+				revision: stakeEligibilityRevision,
+			});
+			// #endregion
+			setJoinable(JoinableState.Loading);
+			return;
+		}
+
+		const { minimumValue, maximumValue } = getCoinflipJoinValueRange(player1Value);
+
+		// #region agent log
+		_agentDbgCoinflipViewing("CoinflipViewing.tsx:joinEffect", "before_find_items_in_range", "H4", {
+			player1Value,
+			minimumValue,
+			maximumValue,
+			revision: stakeEligibilityRevision,
+			p1ItemCount: coinflipData.player1_items.size(),
+		});
+		// #endregion
+
+		let cancelled = false;
+		setJoinable(JoinableState.Loading);
+
+		(async () => {
+			const matchedItems = await findItemsInRange(minimumValue, maximumValue, 1, 10);
+			if (cancelled) return;
+			// #region agent log
+			_agentDbgCoinflipViewing("CoinflipViewing.tsx:joinEffect", "after_find_items_in_range", "H3", {
+				matchedCount: matchedItems.size(),
+				joinableState: matchedItems.size() > 0 ? "joinable" : "unjoinable",
+			});
+			// #endregion
+			setJoinable(matchedItems.size() > 0 ? JoinableState.Joinable : JoinableState.Unjoinable);
+		})();
+
+		return () => {
+			cancelled = true;
+		};
+	}, [visible, coinflipData, CoinflipId, stakeEligibilityRevision, clientStateController]);
 
 	useEffect(() => {
 		if (coinflipData?.status === "completed") {
@@ -717,7 +822,7 @@ export function CoinflipViewing({ CoinflipId, visible, handleCloseButton, childr
 			<UserSection
 				player={2}
 				coin={coinflipData?.player1_coin === 1 ? 2 : 1}
-				userId={coinflipData?.player2?.id || "1"}
+				userId={coinflipData?.player2?.id ?? ""}
 				value={userInformations.player2.value}
 				chance={userInformations.player2.chance}
 				username={coinflipData?.player2?.username || "Error"}

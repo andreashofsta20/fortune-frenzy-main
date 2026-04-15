@@ -3,11 +3,41 @@ package utilities
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 )
+
+// #region agent log
+const agentDebugSessionLogPath = "/Users/52hofand/Downloads/Fortune-frenzy/.cursor/debug-a18dcf.log"
+
+func appendAgentStakeDebugLog(hypothesisID, location, message string, data map[string]any) {
+	if data == nil {
+		data = make(map[string]any)
+	}
+	data["sessionId"] = "a18dcf"
+	data["hypothesisId"] = hypothesisID
+	data["location"] = location
+	data["message"] = message
+	data["runId"] = "redis-lock-trace"
+	data["timestamp"] = time.Now().UnixMilli()
+	b, err := json.Marshal(data)
+	if err != nil {
+		return
+	}
+	f, err := os.OpenFile(agentDebugSessionLogPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return
+	}
+	_, _ = f.Write(append(b, '\n'))
+	_ = f.Close()
+}
+
+// #endregion
 
 const itemStakeKeyPrefix = "itemstake:"
 
@@ -67,6 +97,17 @@ func LockItemStakes(ctx context.Context, rdb *redis.Client, uaids []string, toke
 		return err
 	}
 	if s, ok := v.(string); ok && s != "" {
+		// #region agent log
+		prefix := s
+		if len(prefix) > 96 {
+			prefix = prefix[:96]
+		}
+		appendAgentStakeDebugLog("H-redis-lock", "item_stake.go:LockItemStakes", "blocking_stake_token", map[string]any{
+			"blockingTokenPrefix": prefix,
+			"attemptedToken":      tokenTag,
+			"uaidCount":           len(uaids),
+		})
+		// #endregion
 		return fmt.Errorf("item already in use")
 	}
 	return nil

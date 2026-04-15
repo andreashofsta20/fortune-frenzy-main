@@ -37,6 +37,7 @@ export const UserHeadshot = ({
 	size,
 	position,
 	anchorPoint,
+	occupied = true,
 }: {
 	player: 1 | 2;
 	coin: 1 | 2;
@@ -44,9 +45,42 @@ export const UserHeadshot = ({
 	size?: UDim2;
 	position?: UDim2;
 	anchorPoint?: Vector2;
+	/** When false, show an empty seat (no avatar) — avoids placeholder user ids like "1". */
+	occupied?: boolean;
 }) => {
 	const px = usePx();
 	const color = palette.coins[COINS[coin].name as "Heads" | "Tails"];
+	const resolvedAnchor = anchorPoint ?? (player === 1 ? new Vector2(0, 0) : new Vector2(1, 0));
+	const resolvedPosition =
+		position ?? (player === 1 ? new UDim2(0, px(10), 0, px(10)) : new UDim2(1, px(-10), 0, px(10)));
+	const resolvedSize = size ?? new UDim2(0, px(55), 0, px(55));
+
+	const coinBadge = (
+		<imagelabel
+			AnchorPoint={player === 1 ? new Vector2(1, 1) : new Vector2(0, 1)}
+			Position={player === 1 ? new UDim2(1, px(5), 1, px(5)) : new UDim2(0, px(-5), 1, px(5))}
+			Size={new UDim2(0, px(25), 0, px(25))}
+			Image={COINS[coin].icon}
+			BackgroundTransparency={1}
+		/>
+	);
+
+	if (!occupied) {
+		return (
+			<frame
+				AnchorPoint={resolvedAnchor}
+				Position={resolvedPosition}
+				Size={resolvedSize}
+				BackgroundColor3={setValue(color, 40)}
+				BackgroundTransparency={0.35}
+			>
+				<Corner roundness="full" />
+				<uistroke Thickness={px(1)} Color={color} Transparency={0.45} />
+				{coinBadge}
+			</frame>
+		);
+	}
+
 	const thumbnailUserId = (() => {
 		const parsed = tonumber(userId);
 		if (parsed !== undefined && parsed > 0) return tostring(math.floor(parsed));
@@ -55,21 +89,15 @@ export const UserHeadshot = ({
 
 	return (
 		<imagelabel
-			AnchorPoint={anchorPoint ?? (player === 1 ? new Vector2(0, 0) : new Vector2(1, 0))}
-			Position={position ?? (player === 1 ? new UDim2(0, px(10), 0, px(10)) : new UDim2(1, px(-10), 0, px(10)))}
-			Size={size ?? new UDim2(0, px(55), 0, px(55))}
+			AnchorPoint={resolvedAnchor}
+			Position={resolvedPosition}
+			Size={resolvedSize}
 			Image={`rbxthumb://type=AvatarHeadShot&id=${thumbnailUserId}&w=150&h=150`}
 			BackgroundColor3={setValue(color, 80)}
 		>
 			<Corner roundness="full" />
 			<uistroke Thickness={px(1)} Color={color} />
-			<imagelabel
-				AnchorPoint={player === 1 ? new Vector2(1, 1) : new Vector2(0, 1)}
-				Position={player === 1 ? new UDim2(1, px(5), 1, px(5)) : new UDim2(0, px(-5), 1, px(5))}
-				Size={new UDim2(0, px(25), 0, px(25))}
-				Image={COINS[coin].icon}
-				BackgroundTransparency={1}
-			/>
+			{coinBadge}
 		</imagelabel>
 	);
 };
@@ -161,8 +189,9 @@ export function CoinflipGridItem({ coinflip, LayoutOrder, Activated }: Props) {
 			<UserHeadshot player={1} userId={coinflip.player1.id} coin={coinflip.player1_coin} />
 			<UserHeadshot
 				player={2}
-				userId={coinflip.player2 ? coinflip.player2.id : "1"}
+				userId={coinflip.player2?.id ?? ""}
 				coin={coinflip.player1_coin === 1 ? 2 : 1}
+				occupied={coinflip.player2 !== undefined}
 			/>
 			<TextLabel
 				typeface="Sans"

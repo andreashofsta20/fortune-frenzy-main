@@ -1,7 +1,10 @@
 import React, { useCallback, useState } from "@rbxts/react";
 import { useAtom } from "@rbxts/react-charm";
 import { usePx } from "client/hooks/use-px";
+import { useTouchMenuMobile } from "client/hooks/use-touch-menu-mobile";
 import { palette } from "client/utils/palette";
+import { menuUpscaledAtom } from "client/utils/global-state";
+import { computeMenuHolderScale } from "client/utils/menu-mobile-upscale";
 import { TextLabel } from "client/ui/core/TextLabel";
 import { Button } from "client/ui/core/Button";
 import { Corner } from "client/ui/tools/Corner";
@@ -20,6 +23,9 @@ const MODAL_Z = 600;
 export function TutorialOfferModal() {
 	const px = usePx();
 	const visible = useAtom(tutorialOfferVisibleAtom);
+	const menuUpscaled = useAtom(menuUpscaledAtom);
+	const touchMenuMobile = useTouchMenuMobile();
+	const menuHolderScale = computeMenuHolderScale(menuUpscaled, touchMenuMobile);
 	const clientStateController = Modding.resolveSingleton(ClientStateController);
 	const [declining, setDeclining] = useState(false);
 
@@ -62,6 +68,7 @@ export function TutorialOfferModal() {
 			Size={new UDim2(1, 0, 1, 0)}
 			ZIndex={MODAL_Z}
 		>
+			<uiscale Scale={menuHolderScale} />
 			<MenuCore>
 				<frame
 					BackgroundColor3={palette.background1}

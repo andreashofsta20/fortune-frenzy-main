@@ -7,6 +7,9 @@ import { addCommasToNumber } from "shared/util/number-utils";
 import { MarketplaceService, Players } from "@rbxts/services";
 import { isLoadingAtom } from "client/utils/global-state";
 
+/** `rbxthumb` loads catalog / non-bundled assets reliably; raw `rbxassetid` often shows blank in ImageLabels. */
+const DIAMOND_TILE_IMAGE = "rbxthumb://type=Asset&id=100608701680904&w=420&h=420";
+
 export interface DiamondTileProps {
 	info: DeveloperProductInfo;
 }
@@ -87,7 +90,7 @@ const DiamondTile = React.memo(({ info }: DiamondTileProps) => {
 				/>
 			</Button>
 			<imagelabel
-				Image={`rbxassetid://${info.IconImageAssetId}`}
+				Image={DIAMOND_TILE_IMAGE}
 				ScaleType={Enum.ScaleType.Fit}
 				AnchorPoint={new Vector2(0.5, 0)}
 				BackgroundTransparency={1}

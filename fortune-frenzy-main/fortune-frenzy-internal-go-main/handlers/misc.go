@@ -14,6 +14,10 @@ func GetMinigameStats(c *fiber.Ctx) error {
 	return misc.GetMinigameStats(c)
 }
 
+func ReportMinigameCcu(c *fiber.Ctx) error {
+	return misc.ReportMinigameCcu(c)
+}
+
 func NetworkLog(c *fiber.Ctx) error {
 	return misc.NetworkLog(c)
 }

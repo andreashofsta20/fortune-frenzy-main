@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"ffinternal-go/handlers/misc"
 	"ffinternal-go/service"
 	"math/big"
 	"time"
@@ -108,6 +109,8 @@ func OpenCase(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to grant item"})
 	}
+
+	misc.RecordItemCaseOpen(c.Context(), body.UserID)
 
 	nextRotStr := nextRotationFallback(time.Now()).Format(time.RFC3339)
 	if nextRotation != nil {

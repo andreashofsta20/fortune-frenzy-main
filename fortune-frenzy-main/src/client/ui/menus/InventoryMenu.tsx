@@ -189,7 +189,9 @@ function buildSelectionFromItemIds(
 	for (const itemId of itemIds) {
 		const itemData = itemInfo.get(itemId);
 		if (!itemData) continue;
-		if (itemData.value < selectionData.minimumValue || itemData.value > selectionData.maximumValue) continue;
+		// Total must stay within [minimumValue, maximumValue]; items may be smaller than minimumValue and combine
+		// (matches findLocalItemsInRange / join validation). Only reject a line item if one copy alone exceeds the cap.
+		if (selectionData.maximumValue !== math.huge && itemData.value > selectionData.maximumValue) continue;
 
 		const ownedQuantity = inventory.get(itemId)?.size() ?? 0;
 		const currentQuantity = nextSelection[itemId] ?? 0;
@@ -749,6 +751,9 @@ function InventoryMenuComponent({
 										selectionData?.maximumValue ?? math.huge,
 										1,
 										selectionData?.totalMaximum ?? 10,
+										{
+											stakeSafeCopiesOnly: selectionData?.excludeListedCopies !== false,
+										},
 									);
 									isLoadingAtom(false);
 									selectionData?.setCurrentSelection(

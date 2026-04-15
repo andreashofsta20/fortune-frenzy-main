@@ -11,6 +11,7 @@ import { TutorialOfferModal } from "client/tutorial/TutorialOfferModal";
 import { TutorialOverlay } from "client/tutorial/TutorialOverlay";
 import { backendApiUnreachableAtom, menuUpscaledAtom } from "client/utils/global-state";
 import { computeIsTouchMenuMobileNow } from "client/utils/menu-mobile-upscale";
+import { GEMS_THUMB_IMAGE } from "shared/util/strings";
 
 const MENUS = {
 	PROFILES: "Profiles",
@@ -62,7 +63,7 @@ export function App() {
 					buttons={buttons}
 					currencies={[
 						["Cash", "rbxassetid://86337070472077", Color3.fromRGB(64, 188, 74)],
-						["Gems", "rbxassetid://71369037261295", Color3.fromRGB(53, 180, 255)],
+						["Gems", GEMS_THUMB_IMAGE, Color3.fromRGB(53, 180, 255)],
 					]}
 				/>
 				<PaycheckWidget />

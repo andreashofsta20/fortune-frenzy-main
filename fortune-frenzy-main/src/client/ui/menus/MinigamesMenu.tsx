@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useCallback } from "@rbxts/react";
+import React, { useEffect, useState } from "@rbxts/react";
+import { useAtom } from "@rbxts/react-charm";
 import { MenuCore } from "../navigation/MenuCore";
 import { usePx } from "client/hooks/use-px";
 import { palette } from "client/utils/palette";
@@ -11,8 +12,7 @@ import { ClientStateController } from "client/controllers/ClientStateController"
 import { replacePlaceholder } from "shared/util/string-utils";
 import { addCommasToNumber } from "shared/util/number-utils";
 import { brighten } from "client/utils/color-utils";
-import { TweenService } from "@rbxts/services";
-import { activeMenuAtom } from "client/utils/global-state";
+import { activeMenuAtom, globalMinigameStatsRevisionAtom } from "client/utils/global-state";
 import { handleCloseButton } from "client/utils/menu-utils";
 import { SectionStroke } from "../tools/SectionStroke";
 import {
@@ -100,104 +100,48 @@ function getGlobalStatByMinigame(
 	);
 }
 
-function MinigamesMenuComponent({ visible, flashMenu }: Props) {
-	const clientStateController = Modding.resolveSingleton(ClientStateController);
-	const px = usePx();
-	const animatingValuesRef = useRef(new Map<string, number>());
-	const lastValuesRef = useRef(new Map<string, number>());
+type MinigameRow = (typeof MINIGAMES)[number];
+
+interface MinigameItemProps {
+	minigame: MinigameRow;
+	clientStateController: ClientStateController;
+	px: (n: number) => number;
+}
+
+const MinigameItem = React.memo(({ minigame, clientStateController, px }: MinigameItemProps) => {
+	useAtom(globalMinigameStatsRevisionAtom);
+	const statKey = minigame.localKey ?? minigame.internalKey;
+	const stat = clientStateController.LocalMinigameData[statKey] ?? { total_games_played: 0 };
+	const globalStat = getGlobalStatByMinigame(clientStateController.GlobalMinigameData, minigame) ?? {
+		current_ccu: 0,
+	};
+	const displayCcu = globalStat.current_ccu;
+	const [buttonInstance, setButtonInstance] = useState<ImageButton | undefined>(undefined);
+
+	const tutorialAction =
+		minigame.internalKey === "ItemCases"
+			? ("open_item_cases_menu" as const)
+			: minigame.internalKey === "Coinflip"
+				? ("open_coinflip_hub" as const)
+				: undefined;
+	const tutorialTargetId =
+		minigame.internalKey === "ItemCases"
+			? TUTORIAL_TARGET_IDS.minigamesItemCases
+			: minigame.internalKey === "Coinflip"
+				? TUTORIAL_TARGET_IDS.minigamesCoinflip
+				: undefined;
 
 	useEffect(() => {
-		MINIGAMES.forEach((minigame) => {
-			lastValuesRef.current.set(
-				minigame.internalKey,
-				getGlobalStatByMinigame(clientStateController.GlobalMinigameData, minigame)?.current_ccu ?? 0,
-			);
-		});
-	}, []);
-
-	const updateAnimations = useCallback(() => {
-		const newStats = new Map([...clientStateController.GlobalMinigameData]);
-		MINIGAMES.forEach((minigame) => {
-			const key = minigame.internalKey;
-			const oldValue = lastValuesRef.current.get(key) ?? 0;
-			const newValue = getGlobalStatByMinigame(newStats, minigame)?.current_ccu ?? 0;
-
-			if (oldValue !== newValue) {
-				const numberValue = new Instance("NumberValue");
-				numberValue.Value = oldValue;
-				lastValuesRef.current.set(key, newValue);
-
-				const tween = TweenService.Create(
-					numberValue,
-					new TweenInfo(0.7, Enum.EasingStyle.Quart, Enum.EasingDirection.Out),
-					{ Value: newValue },
-				);
-
-				numberValue.Changed.Connect(() => {
-					animatingValuesRef.current.set(key, math.round(numberValue.Value));
-				});
-
-				tween.Completed.Connect(() => {
-					animatingValuesRef.current.delete(key);
-					numberValue.Destroy();
-				});
-
-				tween.Play();
-			}
-		});
-	}, []);
-
-	useEffect(() => {
-		if (!visible) return;
-
-		const connection = task.spawn(() => {
-			// eslint-disable-next-line no-constant-condition
-			while (true) {
-				updateAnimations();
-				task.wait(2);
-			}
-		});
+		if (!tutorialTargetId || !buttonInstance) return;
+		registerTutorialTarget(tutorialTargetId, buttonInstance);
 
 		return () => {
-			task.cancel(connection);
+			unregisterTutorialTarget(tutorialTargetId, buttonInstance);
 		};
-	}, [visible, updateAnimations]);
+	}, [tutorialTargetId, buttonInstance]);
 
-	const MinigameItem = React.memo(({ minigame }: { minigame: (typeof MINIGAMES)[number] }) => {
-		const statKey = minigame.localKey ?? minigame.internalKey;
-		const stat = clientStateController.LocalMinigameData[statKey] ?? { total_games_played: 0 };
-		const globalStat = getGlobalStatByMinigame(clientStateController.GlobalMinigameData, minigame) ?? {
-			current_ccu: 0,
-		};
-		const displayCcu = animatingValuesRef.current.has(minigame.internalKey)
-			? animatingValuesRef.current.get(minigame.internalKey)!
-			: globalStat.current_ccu;
-		const [buttonInstance, setButtonInstance] = React.useState<ImageButton | undefined>(undefined);
-
-		const tutorialAction =
-			minigame.internalKey === "ItemCases"
-				? ("open_item_cases_menu" as const)
-				: minigame.internalKey === "Coinflip"
-					? ("open_coinflip_hub" as const)
-					: undefined;
-		const tutorialTargetId =
-			minigame.internalKey === "ItemCases"
-				? TUTORIAL_TARGET_IDS.minigamesItemCases
-				: minigame.internalKey === "Coinflip"
-					? TUTORIAL_TARGET_IDS.minigamesCoinflip
-					: undefined;
-
-		useEffect(() => {
-			if (!tutorialTargetId || !buttonInstance) return;
-			registerTutorialTarget(tutorialTargetId, buttonInstance);
-
-			return () => {
-				unregisterTutorialTarget(tutorialTargetId, buttonInstance);
-			};
-		}, [tutorialTargetId, buttonInstance]);
-
-		return (
-			<imagebutton
+	return (
+		<imagebutton
 				ref={setButtonInstance}
 				Image={minigame.image}
 				Size={new UDim2(1, 0, 0, px(110))}
@@ -349,8 +293,12 @@ function MinigamesMenuComponent({ visible, flashMenu }: Props) {
 					}}
 				/>
 			</imagebutton>
-		);
-	});
+	);
+});
+
+function MinigamesMenuComponent({ visible, flashMenu: _flashMenu }: Props) {
+	const clientStateController = Modding.resolveSingleton(ClientStateController);
+	const px = usePx();
 
 	return (
 		<MenuCore key="minigamesMenuCore">
@@ -408,7 +356,12 @@ function MinigamesMenuComponent({ visible, flashMenu }: Props) {
 						SortOrder={Enum.SortOrder.LayoutOrder}
 					/>
 					{MINIGAMES.map((minigame) => (
-						<MinigameItem minigame={minigame} key={minigame.internalKey} />
+						<MinigameItem
+							minigame={minigame}
+							key={minigame.internalKey}
+							clientStateController={clientStateController}
+							px={px}
+						/>
 					))}
 				</scrollingframe>
 			</frame>

@@ -89,3 +89,5 @@ export const jackpotSelectionDataAtom = atom<
 	| undefined
 >(undefined);
 
+/** Increments when global minigame stats (live player counts) update so the Minigames hub re-renders. */
+export const globalMinigameStatsRevisionAtom = atom(0);

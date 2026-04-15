@@ -18,6 +18,7 @@ TRUNCATE TABLE case_battle_cases;
 TRUNCATE TABLE settings;
 TRUNCATE TABLE leaderboard_cache;
 TRUNCATE TABLE minigame_stats;
+TRUNCATE TABLE minigame_server_ccu;
 
 SET FOREIGN_KEY_CHECKS = 1;
 

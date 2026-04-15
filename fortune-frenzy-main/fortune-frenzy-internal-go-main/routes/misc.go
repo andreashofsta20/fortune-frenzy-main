@@ -16,6 +16,7 @@ func SetupMiscRoutes(app *fiber.App) {
 	app.Get("/leaderboard", rlR, auth, handlers.GetLeaderboard)
 
 	app.Get("/statistics/minigames", rlR, auth, handlers.GetMinigameStats)
+	app.Post("/statistics/minigames/ccu", rlW, auth, handlers.ReportMinigameCcu)
 
 	app.Post("/logging/network", rlW, auth, handlers.NetworkLog)
 

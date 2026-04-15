@@ -15,9 +15,12 @@ export const COINS = {
 	},
 };
 
+/** Gems icon — sidebar balance + Exclusive Store gem bundles. */
+export const GEMS_THUMB_IMAGE = "rbxassetid://71369037261295";
+
 export const COINFLIP_VIEWING_STATUSES = {
 	waiting_for_player: "Waiting for another player..",
-	awaiting_confirmation: "Finalizing flip on server…",
+	awaiting_confirmation: "Waiting for global syncronization...",
 	completed: "This coinflip has been marked as complete!",
 	failed: "Something went wrong - contact support if this issue persists.",
 };
@@ -48,9 +51,9 @@ export const CASE_BATTLES_VIEWING_TITLE = "{{name}}'s Battle";
 export const PLAYERS_MENU_TITLE = "People";
 export const PLAYERS_SEARCH_PLACEHOLDER = "You can search for players outside of this server!";
 export const PLAYERS_SORT_NAME = "Sort by Name";
-/** Player list: value ordering (dropdown must show two distinct labels; avoid duplicate “Sort by Value”). */
-export const PLAYERS_SORT_VALUE_HIGH = "Sort by Highest Value";
-export const PLAYERS_SORT_VALUE_LOW = "Sort by Lowest Value";
+/** Player list: value ordering — keep labels short for the sort dropdown width. */
+export const PLAYERS_SORT_VALUE_HIGH = "Highest Value";
+export const PLAYERS_SORT_VALUE_LOW = "Lowest Value";
 export const PLAYERS_PROFILE_TITLE = "@{{name}}'s Profile";
 export const PLAYERS_CARD_TRADE_BUTTON = "Trade";
 export const PLAYERS_CARD_TRADE_BUTTON_YOU = "This is you!";

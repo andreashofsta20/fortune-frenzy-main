@@ -14,6 +14,9 @@ type MinigameStat struct {
 	TotalLosses      int64 `json:"total_losses"`
 }
 
+const legacyMinigameStatsQuery = `
+SELECT mode, current_ccu, total_spent, total_games_played, total_wins, total_losses FROM minigame_stats`
+
 func GetMinigameStats(c *fiber.Ctx) error {
 	db, err := service.GetMariaDBConnection()
 	if err != nil {
@@ -21,9 +24,7 @@ func GetMinigameStats(c *fiber.Ctx) error {
 	}
 	defer db.Close()
 
-	rows, err := db.QueryContext(c.Context(),
-		"SELECT mode, current_ccu, total_spent, total_games_played, total_wins, total_losses FROM minigame_stats",
-	)
+	rows, err := db.QueryContext(c.Context(), legacyMinigameStatsQuery)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to query statistics"})
 	}
@@ -39,8 +40,21 @@ func GetMinigameStats(c *fiber.Ctx) error {
 		stats[mode] = s
 	}
 
+	live := liveMinigameActivityCounts(c.Context())
+	for mode, n := range live {
+		if s, ok := stats[mode]; ok {
+			s.CurrentCCU = n
+			stats[mode] = s
+		}
+	}
+
 	return c.JSON(fiber.Map{
 		"status": "OK",
 		"stats":  stats,
 	})
+}
+
+// ReportMinigameCcu is deprecated (activity is derived from Redis game state). Kept for older game servers.
+func ReportMinigameCcu(c *fiber.Ctx) error {
+	return c.JSON(fiber.Map{"status": "OK"})
 }

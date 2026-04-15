@@ -51,6 +51,14 @@ function RobuxShopMenuComponent({ visible }: RobuxShopMenuProps) {
 		if (visible) setVipSubscriptionRow(clientStateController.SubscriptionData.get("VIP"));
 	}, [visible, clientStateController]);
 
+	const [gamepassStatusRevision, setGamepassStatusRevision] = useState(0);
+	useEffect(() => {
+		const connection = Events.GamepassStatusUpdate.connect(() => {
+			setGamepassStatusRevision((n) => n + 1);
+		});
+		return () => connection.Disconnect();
+	}, []);
+
 	const diamondsProductArray = useMemo(() => {
 		const products: number[] = [];
 		clientStateController.RobuxProducts.DeveloperProducts.forEach((category, productId) => {
@@ -114,26 +122,26 @@ function RobuxShopMenuComponent({ visible }: RobuxShopMenuProps) {
 		const gamepasses = clientStateController.RobuxProducts.Gamepasses;
 		const tiles: JSX.Element[] = [];
 
-		gamepasses.forEach((productId) => {
-			const productIdStr = tostring(productId);
+		gamepasses.forEach((productIdStr, gamepassKey) => {
 			const info = clientStateController.ProductInfo.get(productIdStr) as GamePassProductInfo | undefined;
-			if (info) {
-				tiles.push(
-					<GamepassTile
-						option="gamepass"
-						info={info}
-						layoutOrder={info.PriceInRobux ?? 0}
-						color={COLORS.gamepass[productId] ?? palette.blue}
-						image={`rbxthumb://type=GamePass&id=${productId}&w=150&h=150`}
-						id={tonumber(productId)!}
-						key={`gamepass-${productId}`}
-					/>,
-				);
-			}
+			if (!info) return;
+			const owns = clientStateController.GamepassStatuses.get(gamepassKey) === true;
+			tiles.push(
+				<GamepassTile
+					option="gamepass"
+					info={info}
+					layoutOrder={info.PriceInRobux ?? 0}
+					color={COLORS.gamepass[productIdStr] ?? palette.blue}
+					image={`rbxthumb://type=GamePass&id=${productIdStr}&w=150&h=150`}
+					id={tonumber(productIdStr)!}
+					key={`gamepass-${productIdStr}`}
+					gamepassOwned={owns}
+				/>,
+			);
 		});
 
 		return tiles;
-	}, [clientStateController.RobuxProducts, clientStateController.ProductInfo]);
+	}, [clientStateController.RobuxProducts, clientStateController.ProductInfo, gamepassStatusRevision]);
 
 	return (
 		<MenuCore>

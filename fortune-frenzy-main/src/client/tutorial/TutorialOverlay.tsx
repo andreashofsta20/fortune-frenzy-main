@@ -2,7 +2,13 @@ import React, { useEffect, useRef, useState } from "@rbxts/react";
 import { createPortal } from "@rbxts/react-roblox";
 import { useAtom } from "@rbxts/react-charm";
 import { RunService, TweenService, Workspace } from "@rbxts/services";
-import { coinflipStateAtom, inventoryOverlayStateAtom } from "client/utils/global-state";
+import {
+	coinflipStateAtom,
+	inventoryOverlayStateAtom,
+	menuUpscaledAtom,
+} from "client/utils/global-state";
+import { useTouchMenuMobile } from "client/hooks/use-touch-menu-mobile";
+import { computeMenuHolderScale } from "client/utils/menu-mobile-upscale";
 import { usePx } from "client/hooks/use-px";
 import { usePxScale } from "client/hooks/use-scale";
 import { palette } from "client/utils/palette";
@@ -55,6 +61,9 @@ function toHighlightRect(target: GuiObject, overlayFrame?: Frame): HighlightRect
 export function TutorialOverlay() {
 	const px = usePx();
 	const pxScale = usePxScale();
+	const menuUpscaled = useAtom(menuUpscaledAtom);
+	const touchMenuMobile = useTouchMenuMobile();
+	const menuHolderScale = computeMenuHolderScale(menuUpscaled, touchMenuMobile);
 	const overlayRef = useRef<Frame>();
 	const tutorialState = useAtom(tutorialStateAtom);
 	const coinflipState = useAtom(coinflipStateAtom);
@@ -255,6 +264,7 @@ export function TutorialOverlay() {
 
 	return (
 		<frame ref={overlayRef} BackgroundTransparency={1} Size={UDim2.fromScale(1, 1)} ZIndex={OVERLAY_ZINDEX}>
+			<uiscale Scale={menuHolderScale} />
 			{tutorialState.active && fullscreenTutorialDim ? (
 				<frame
 					BackgroundColor3={overlayColor}
