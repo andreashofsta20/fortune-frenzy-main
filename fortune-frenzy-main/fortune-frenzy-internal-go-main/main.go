@@ -126,6 +126,7 @@ func main() {
 	routes.SetupMiscRoutes(app)
 
 	workers.StartRolimonsWorker()
+	workers.StartCaseRotationWorker()
 	workers.StartLeaderboardWorker()
 
 	port := os.Getenv("PORT")

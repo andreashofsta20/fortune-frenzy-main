@@ -1,0 +1,30 @@
+# Run next to your Fortune Frenzy API stack so the bot can reach Redis by service name `redis`.
+#
+# 1. Copy .env.example → .env and set DISCORD_TOKEN (and optional FORTUNE_* / REDIS_*).
+# 2. Fix the external network name to match your API project:
+#    docker network ls | grep ff-network
+#    Often: <folder_name>_ff-network  e.g. fortune-frenzy_ff-network
+#
+# 3. From this directory:
+#    docker compose up -d --build
+#
+services:
+  nova-bot:
+    build: .
+    container_name: ff-nova-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    # Overrides .env for this var: inside a container 127.0.0.1 is NOT the host — use the API service name from the FF stack (`ff-api` in fortune-frenzy-internal-go-main/docker-compose.yml). Change if your service name differs.
+    environment:
+      FORTUNE_FRENZY_API_BASE_URL: http://ff-api:3004
+    # So `dotenv` can read `/app/.env` inside the container (same vars as env_file).
+    volumes:
+      - ./.env:/app/.env:ro
+    networks:
+      - ff-network
+
+networks:
+  ff-network:
+    external: true
+    name: fortune-frenzy_ff-network

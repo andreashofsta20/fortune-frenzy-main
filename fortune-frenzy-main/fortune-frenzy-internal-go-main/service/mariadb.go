@@ -48,6 +48,12 @@ func InitMariaDB() {
 	if err = ensureItemsAllowDirectShopPurchase(ctx, pool); err != nil {
 		log.Fatalf("Failed to ensure items.allow_direct_shop_purchase (required for marketplace catalog): %v", err)
 	}
+	if err = ensureCasesCatalogVIPOnlyColumn(ctx, pool); err != nil {
+		log.Fatalf("Failed to ensure cases_catalog.vip_only (required for GET /cases): %v", err)
+	}
+	if err = ensureMinigameServerCcuTable(ctx, pool); err != nil {
+		log.Fatalf("Failed to ensure minigame_server_ccu table: %v", err)
+	}
 
 	log.Println("Connected to MariaDB")
 }
@@ -86,6 +92,49 @@ UPDATE items SET allow_direct_shop_purchase = 0 WHERE id IN (
 	return nil
 }
 
+// ensureCasesCatalogVIPOnlyColumn adds cases_catalog.vip_only if missing (same as migration 008).
+// Deploys that skip SQL migrations otherwise return 500 on GET /cases (unknown column vip_only).
+func ensureCasesCatalogVIPOnlyColumn(ctx context.Context, db *sql.DB) error {
+	var n int
+	err := db.QueryRowContext(ctx, `
+SELECT COUNT(*) FROM information_schema.COLUMNS
+WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cases_catalog' AND COLUMN_NAME = 'vip_only'
+`).Scan(&n)
+	if err != nil {
+		return fmt.Errorf("information_schema cases_catalog.vip_only: %w", err)
+	}
+	if n > 0 {
+		return nil
+	}
+	_, err = db.ExecContext(ctx, `
+ALTER TABLE cases_catalog
+  ADD COLUMN vip_only TINYINT(1) NOT NULL DEFAULT 0 AFTER dev_product
+`)
+	if err != nil {
+		return fmt.Errorf("ALTER TABLE cases_catalog ADD vip_only: %w", err)
+	}
+	log.Println("Applied cases_catalog.vip_only column (was missing)")
+	return nil
+}
+
+// ensureMinigameServerCcuTable creates minigame_server_ccu if missing (migration 007).
+// Older game builds POST /statistics/minigames/ccu with upserts against this table.
+func ensureMinigameServerCcuTable(ctx context.Context, db *sql.DB) error {
+	_, err := db.ExecContext(ctx, `
+CREATE TABLE IF NOT EXISTS minigame_server_ccu (
+    server_job_id VARCHAR(128) NOT NULL,
+    mode VARCHAR(64) NOT NULL,
+    player_count INT NOT NULL DEFAULT 0,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (server_job_id, mode),
+    KEY idx_mode_updated (mode, updated_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`)
+	if err != nil {
+		return fmt.Errorf("CREATE TABLE minigame_server_ccu: %w", err)
+	}
+	return nil
+}
+
 func GetMariaDBConnection() (*sql.Conn, error) {
 	if pool == nil {
 		InitMariaDB()
@@ -101,4 +150,12 @@ func GetMariaDBConnection() (*sql.Conn, error) {
 	}
 
 	return conn, nil
+}
+
+// BeginMariaDBTx starts a transaction on the shared pool (for jobs that need multi-statement atomicity).
+func BeginMariaDBTx(ctx context.Context) (*sql.Tx, error) {
+	if pool == nil {
+		InitMariaDB()
+	}
+	return pool.BeginTx(ctx, nil)
 }

@@ -110,7 +110,7 @@ export const TOOLTIP_SELL = "Sell on Shop";
 export const ITEM_CASES_MENU_TITLE = "Item Cases";
 export const ITEM_CASES_ROTATION_TITLE = 'The next rotation is <font color="{{color}}">{{countdown}}</font>';
 export const ITEM_CASES_ROTATION_DESCRIPTION =
-	"Cases change every 3 days. Items are only available through these cases, so grab as many as you can before they disappear, possibly for weeks!";
+	"Pools roll daily at 06:00 UTC from live Rolimons limiteds. Case price follows expected value (house margin on the API). Win odds are recomputed from current values so expensive items stay rarer as the catalog moves.";
 export const ITEM_CASES_CASE_MENU_TITLE = `{{name}} Case`;
 export const ITEM_CASES_CASE_MENU_DESCRIPTION = `This case currently has the following items:`;
 export const ITEM_CASES_CASE_MENU_INFO_PRICE_TITLE = `Price`;

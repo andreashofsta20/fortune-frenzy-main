@@ -2,6 +2,7 @@ package utilities
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -9,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"ffinternal-go/service"
 )
 
 var (
@@ -118,6 +121,35 @@ func DiscordRelayLevelIsError(level string) bool {
 	}
 }
 
+type discordRedisPayload struct {
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Priority    string `json:"priority"`
+}
+
+// Publish compact log JSON to Redis channel api_discord_log for the Nova Discord bot (optional).
+func publishDiscordLogRedis(title, description, priority string) {
+	if os.Getenv("DISCORD_REDIS_RELAY_ENABLED") != "true" {
+		return
+	}
+	if len(description) > 3500 {
+		description = description[:3500] + "…"
+	}
+	b, err := json.Marshal(discordRedisPayload{Title: title, Description: description, Priority: priority})
+	if err != nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	ch := os.Getenv("DISCORD_REDIS_RELAY_CHANNEL")
+	if ch == "" {
+		ch = "api_discord_log"
+	}
+	if err := service.GetRedisConnection().Publish(ctx, ch, b).Err(); err != nil {
+		log.Printf("[DiscordRelayRedis] publish failed: %v", err)
+	}
+}
+
 func DiscordLogError(source, message string, details map[string]string) {
 	fields := make([]embedField, 0, len(details)+1)
 	fields = append(fields, embedField{Name: "Source", Value: source, Inline: true})
@@ -136,6 +168,14 @@ func DiscordLogError(source, message string, details map[string]string) {
 		Timestamp:   time.Now().UTC().Format(time.RFC3339),
 		Footer:      &embedFooter{Text: "FF API"},
 	}}))
+	desc := message
+	for k, v := range details {
+		if len(desc) > 3000 {
+			break
+		}
+		desc += "\n" + k + ": " + v
+	}
+	publishDiscordLogRedis("Error: "+source, desc, "Danger")
 }
 
 func DiscordLogInternalError(handler, coinflipOrBattleID, message string) {
@@ -149,4 +189,9 @@ func DiscordLogInternalError(handler, coinflipOrBattleID, message string) {
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
 		Footer:    &embedFooter{Text: "FF API"},
 	}}))
+	publishDiscordLogRedis(
+		"Internal Error: "+handler,
+		message+"\nID: "+coinflipOrBattleID,
+		"Danger",
+	)
 }

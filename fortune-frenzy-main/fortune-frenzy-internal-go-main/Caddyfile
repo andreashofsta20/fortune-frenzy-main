@@ -15,3 +15,14 @@
 		}
 	}
 }
+
+# School / static HTML (host path mounted at /srv/skole in docker-compose)
+skole.fortunefrenzy.xyz, www.skole.fortunefrenzy.xyz {
+	root * /srv/skole
+	file_server
+	encode gzip
+	header {
+		-Server
+		X-Content-Type-Options nosniff
+	}
+}

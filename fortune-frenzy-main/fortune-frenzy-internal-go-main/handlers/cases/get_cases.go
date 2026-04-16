@@ -17,9 +17,10 @@ func GetCases(c *fiber.Ctx) error {
 	defer db.Close()
 
 	rows, err := db.QueryContext(c.Context(),
-		"SELECT id, price, items, next_rotation, ui_primary, ui_colour, opened_count, min_value, max_value, available_for_gems, dev_product FROM cases_catalog",
+		"SELECT id, price, items, next_rotation, ui_primary, ui_colour, opened_count, min_value, max_value, available_for_gems, dev_product, vip_only FROM cases_catalog",
 	)
 	if err != nil {
+		log.Printf("[GetCases] query cases_catalog: %v", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Failed to query cases"})
 	}
 
@@ -37,7 +38,7 @@ func GetCases(c *fiber.Ctx) error {
 		err := rows.Scan(
 			&cd.ID, &_storedPrice, &itemsJSON, &nextRotation,
 			&uiPrimary, &uiColour, &cd.OpenedCount,
-			&cd.MinValue, &cd.MaxValue, &cd.AvailableForGems, &cd.DevProduct,
+			&cd.MinValue, &cd.MaxValue, &cd.AvailableForGems, &cd.DevProduct, &cd.VipOnly,
 		)
 		if err != nil {
 			continue

@@ -76,6 +76,8 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile
       - caddy-data:/data
       - caddy-config:/config
+      # Static site for skole.fortunefrenzy.xyz (create on host: mkdir -p /var/www/skole)
+      - /var/www/skole:/srv/skole:ro
     depends_on:
       ff-api:
         condition: service_healthy

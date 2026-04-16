@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState, useCallback } from "@rbxts/react";
 import { usePx } from "client/hooks/use-px";
 import { palette } from "client/utils/palette";
-import { Case, Item } from "typings/APIResponses";
+import { Case } from "typings/APIResponses";
 import { TextLabel } from "../core/TextLabel";
 import {
 	ITEM_CASES_CASE_MENU_CANT_AFFORD_DESC,
@@ -29,6 +29,8 @@ import { Corner } from "../tools/Corner";
 import { isLoadingAtom, isNavigationVisibleAtom } from "client/utils/global-state";
 import { requestServer } from "client/utils/send-function";
 import { TUTORIAL_TARGET_IDS, advanceTutorialAction } from "client/tutorial/tutorial-state";
+import { resolveDisplayItemForCaseLine } from "client/utils/case-item-display";
+import { prefetchMissingCaseItemRows } from "client/utils/prefetch-case-catalog-items";
 
 interface Props {
 	currentCase?: Case;
@@ -40,6 +42,7 @@ interface Props {
 		status: "none" | "loading" | "spinning" | "done" | "ready";
 		speed: number;
 		winningItem?: string;
+		winningIndex?: number;
 		isLucky?: boolean;
 	};
 	setSpinnerState: React.Dispatch<
@@ -47,6 +50,7 @@ interface Props {
 			status: "none" | "loading" | "spinning" | "done" | "ready";
 			speed: number;
 			winningItem?: string;
+			winningIndex?: number;
 			isLucky?: boolean;
 		}>
 	>;
@@ -56,6 +60,12 @@ export function CasePage({ currentCase, setCurrentCase, visible, spinnerState, s
 	const px = usePx();
 	const clientStateController = Modding.resolveSingleton(ClientStateController);
 	const [previousCaseName, setPreviousCaseName] = useState<string | undefined>(undefined);
+	const [catalogTick, setCatalogTick] = useState(0);
+
+	useEffect(() => {
+		const c = clientStateController.ItemInfoChangedEvent.Connect(() => setCatalogTick((n) => n + 1));
+		return () => c.Disconnect();
+	}, [clientStateController]);
 
 	const [itemTiles, infoTiles, diamondsPrice] = useMemo(() => {
 		if (!currentCase) return [[], [], -1];
@@ -64,23 +74,7 @@ export function CasePage({ currentCase, setCurrentCase, visible, spinnerState, s
 			.sort((a, b) => b.chance < a.chance)
 			.map((item, index) => {
 				const catalog = clientStateController.ItemInfo.get(item.id);
-				const displayItem: Item = catalog
-					? { ...catalog, value: item.value !== undefined ? item.value : catalog.value }
-					: {
-							id: item.id,
-							asset_id: "0",
-							name: item.id,
-							creator: "",
-							description: "",
-							average_price: 0,
-							total_unboxed: 0,
-							maximum_copies: 0,
-							value: item.value ?? 0,
-							created_at: "",
-							updated_at: "",
-							color: "#9aa6b2",
-							category: "default",
-						};
+				const displayItem = resolveDisplayItemForCaseLine(item, catalog);
 				return (
 					<ItemCard
 						data={{
@@ -136,7 +130,7 @@ export function CasePage({ currentCase, setCurrentCase, visible, spinnerState, s
 			);
 		}
 		return [itemTiles, infoTiles, diamondsPrice];
-	}, [currentCase]);
+	}, [currentCase, catalogTick]);
 
 	const handleOpenCase = useCallback(
 		async (flag?: "lucky" | "robux") => {
@@ -181,6 +175,7 @@ export function CasePage({ currentCase, setCurrentCase, visible, spinnerState, s
 				...spinnerState,
 				status: "ready",
 				winningItem: id,
+				winningIndex: undefined,
 				speed: tonumber(speed) ?? 5,
 				isLucky: isLucky === "true",
 			});
@@ -213,6 +208,11 @@ export function CasePage({ currentCase, setCurrentCase, visible, spinnerState, s
 		setPreviousCaseName(currentCase?.id);
 		return () => caseChangeConnection.Disconnect();
 	}, [currentCase]);
+
+	useEffect(() => {
+		if (!visible || !currentCase) return;
+		prefetchMissingCaseItemRows(currentCase, clientStateController);
+	}, [visible, currentCase, clientStateController]);
 
 	return (
 		<frame

@@ -11,6 +11,8 @@ export default function (
 			status: "none" | "loading" | "spinning" | "done" | "ready";
 			speed: number;
 			winningItem?: string;
+			winningIndex?: number;
+			isLucky?: boolean;
 		}>
 	>,
 ) {
@@ -30,6 +32,8 @@ export default function (
 		speed: 5,
 		status: "none",
 		winningItem: undefined,
+		winningIndex: undefined,
+		isLucky: false,
 	});
 	containerFramePositionMotion.tween(new UDim2(0, 0, 0, 0), { time: 0.05 });
 }

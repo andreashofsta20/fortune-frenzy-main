@@ -15,11 +15,20 @@ export default async function (
 			status: "none" | "loading" | "spinning" | "done" | "ready";
 			speed: number;
 			winningItem?: string;
+			winningIndex?: number;
 			isLucky?: boolean;
 		}>
 	>,
 	currentCase: Case,
 ) {
+	setSpinnerState((prev) => ({
+		...prev,
+		status: "loading",
+		winningItem: undefined,
+		winningIndex: undefined,
+		isLucky: false,
+	}));
+
 	frameSizeMotion.tween(new UDim2(0, px(900), 0, px(200)), {
 		time: 0.3,
 		style: Enum.EasingStyle.Exponential,
@@ -47,6 +56,8 @@ export default async function (
 			speed: 5,
 			status: "none",
 			winningItem: undefined,
+			winningIndex: undefined,
+			isLucky: false,
 		});
 		return;
 	}
@@ -58,6 +69,7 @@ export default async function (
 		speed: tonumber(speed) ?? 5,
 		status: "ready",
 		winningItem: id,
+		winningIndex: undefined,
 		isLucky: isLucky === "true",
 	});
 }

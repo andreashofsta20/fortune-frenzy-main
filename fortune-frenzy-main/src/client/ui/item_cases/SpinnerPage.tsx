@@ -26,6 +26,7 @@ import { SoundController } from "client/controllers/SoundController";
 import { RunService, TweenService, Workspace } from "@rbxts/services";
 import { peek } from "@rbxts/charm";
 import { TUTORIAL_TARGET_IDS, advanceTutorialAction } from "client/tutorial/tutorial-state";
+import { resolveDisplayItemForCaseLine, type CaseItemLine } from "client/utils/case-item-display";
 
 interface Props {
 	visible: boolean;
@@ -58,15 +59,20 @@ export function SpinnerPage({ visible, currentCase, spinnerState, setSpinnerStat
 	const [containerFramePosition, containerFramePositionMotion] = useMotion(new UDim2(0, 0, 0, 0));
 	const [containerFade, containerFadeMotion] = useMotion(1);
 	const containerRef = useRef<Frame>(undefined);
-	const previousCaseRef = useRef<Case | undefined>(undefined);
 
-	const [itemCards, setItemCards] = useState<JSX.Element[]>([]);
 	const [itemCardsData, setItemCardsData] = useState<Entry[]>([]);
 	const passedItemsRef = useRef(new Set<number>());
 	const [strings, setStrings] = useState({
 		spinPrimary: ITEM_CASES_CASE_SPINNER_TITLE,
 		spinSecondary: ITEM_CASES_CASE_SPINNER_DESCRIPTION,
 	});
+
+	const caseStripSeed = useMemo(() => {
+		if (!currentCase) return "";
+		const parts = currentCase.items.map((it) => `${it.id}:${it.chance}:${it.claimed}`);
+		parts.sort((a, b) => a < b);
+		return `${currentCase.id}|${parts.join("|")}`;
+	}, [currentCase]);
 
 	const ClaimButton = {
 		text: ITEM_CASES_CLAIM_BUTTON,
@@ -103,15 +109,15 @@ export function SpinnerPage({ visible, currentCase, spinnerState, setSpinnerStat
 	};
 
 	const [leftButtonData, setLeftButtonData] = useState({
-		ui: HiddenClaimButton,
+		ui: ClaimButton,
 		action: "claim",
-		enabled: false,
+		enabled: true,
 	});
 
 	const [rightButtonData, setRightButtonData] = useState({
-		ui: HiddenOpenAgainButton,
+		ui: OpenAgainButton,
 		action: "open_again",
-		enabled: false,
+		enabled: true,
 	});
 
 	useEffect(() => {
@@ -188,17 +194,29 @@ export function SpinnerPage({ visible, currentCase, spinnerState, setSpinnerStat
 						enabled: false,
 					});
 
-					if (!currentCase) return;
+					if (!currentCase || spinnerState.winningItem === undefined) return;
+
+					// Upstream jumped straight to "spinning" with a stale strip; we only add this step so the
+					// reel already contains the win before the tween (required for Rolimons / rotated pools).
+					setItemCardsData(ShuffleCaseItems(currentCase.items, 100, spinnerState.winningItem));
 
 					setSpinnerState((prevState) => ({
 						...prevState,
 						status: "spinning",
+						winningIndex: undefined,
 					}));
 					setStrings({
 						spinPrimary: replacePlaceholder(
 							ITEM_CASES_CASE_SPINNER_TITLE,
 							"{{item}}",
-							formatItemName(clientStateController.ItemInfo.get(spinnerState.winningItem!)!.name),
+							(() => {
+								const wid = spinnerState.winningItem;
+								const row = wid !== undefined ? currentCase.items.find((i) => i.id === wid) : undefined;
+								const info = wid !== undefined ? clientStateController.ItemInfo.get(wid) : undefined;
+								const nameRaw =
+									row !== undefined ? resolveDisplayItemForCaseLine(row, info).name : wid ?? "Item";
+								return formatItemName(nameRaw);
+							})(),
 						),
 						spinSecondary: ITEM_CASES_CASE_SPINNER_DESCRIPTION,
 					});
@@ -217,10 +235,12 @@ export function SpinnerPage({ visible, currentCase, spinnerState, setSpinnerStat
 						enabled: false,
 					});
 
-					const possibleItems = itemCardsData
+					// Match upstream: prefer indices > 15; fall back if the shuffled strip is too short.
+					const candidates = itemCardsData
 						.map((entry, index) => ({ index, entry }))
-						.filter(({ entry }) => entry.id === spinnerState.winningItem)
-						.filter(({ index }) => index > 15);
+						.filter(({ entry }) => entry.id === spinnerState.winningItem);
+					const pastFifteen = candidates.filter(({ index }) => index > 15);
+					const possibleItems = pastFifteen.size() > 0 ? pastFifteen : candidates;
 
 					if (possibleItems.size() > 0) {
 						const winningItem = possibleItems[math.random(possibleItems.size()) - 1];
@@ -296,7 +316,25 @@ export function SpinnerPage({ visible, currentCase, spinnerState, setSpinnerStat
 									winningIndex: winningItem.index,
 								}));
 							}, spinnerState.speed + 0.1);
+						} else {
+							warn("[SpinnerPage] Missing winning card in reel; completing spin.");
+							setTimeout(() => {
+								setSpinnerState((prevState) => ({
+									...prevState,
+									status: "done",
+									winningIndex: winningItem.index,
+								}));
+							}, spinnerState.speed + 0.1);
 						}
+					} else {
+						warn("[SpinnerPage] Winning item not found in reel; completing spin.");
+						setTimeout(() => {
+							setSpinnerState((prevState) => ({
+								...prevState,
+								status: "done",
+								winningIndex: 0,
+							}));
+						}, spinnerState.speed + 0.1);
 					}
 					break;
 				}
@@ -329,38 +367,76 @@ export function SpinnerPage({ visible, currentCase, spinnerState, setSpinnerStat
 		isNavigationVisibleAtom(!visible);
 	}, [spinnerState, itemCardsData]);
 
+	/** Hide previous spin's reel while waiting on the server; `ready` builds the new strip. */
+	useEffect(() => {
+		if (spinnerState.status !== "loading") return;
+		setItemCardsData([]);
+	}, [spinnerState.status]);
+
 	useEffect(() => {
 		if (!currentCase) return;
-		if (previousCaseRef.current?.id !== currentCase.id) {
-			const itemArray = ShuffleCaseItems(currentCase.items, 100);
-			setItemCardsData(itemArray);
+		if (
+			spinnerState.status === "ready" ||
+			spinnerState.status === "spinning" ||
+			spinnerState.status === "loading" ||
+			spinnerState.status === "done"
+		) {
+			return;
+		}
+		setItemCardsData(ShuffleCaseItems(currentCase.items, 100, undefined));
+	}, [currentCase, caseStripSeed, spinnerState.status]);
+
+	/** Built during render so reel instances exist before spinner useEffects run (FindFirstChild). */
+	const itemCards = useMemo(() => {
+		if (!itemCardsData.size() || !currentCase) {
+			return [] as JSX.Element[];
 		}
 
-		previousCaseRef.current = currentCase;
-	}, [currentCase]);
+		const lineById = new Map<string, CaseItemLine>();
+		for (const row of currentCase.items) {
+			lineById.set(row.id, row);
+		}
 
-	useEffect(() => {
-		if (!itemCardsData.size()) return;
+		return itemCardsData.map((entry, index) => {
+			const catalogRow = lineById.get(entry.id);
+			const line: CaseItemLine = {
+				id: entry.id,
+				chance: catalogRow?.chance ?? entry.chance,
+				claimed: catalogRow?.claimed ?? entry.claimed,
+				value: catalogRow?.value,
+			};
+			const catalog = clientStateController.ItemInfo.get(entry.id);
+			const displayItem = resolveDisplayItemForCaseLine(line, catalog);
 
-		setItemCards(
-			itemCardsData.map((item, index) => (
-				<ItemCard
-					data={{
-						item: clientStateController.ItemInfo.get(item.id)!,
-						chance: item.chance,
-						claimed: item.claimed,
+			return (
+				<frame
+					key={`item-card-wrap-${index}`}
+					BackgroundTransparency={1}
+					LayoutOrder={index}
+					Size={new UDim2(0, px(122), 0, px(170))}
+					ref={(inst) => {
+						if (inst) inst.Name = `item-card-${index}`;
 					}}
-					layoutOrder={index}
-					strokeThickness={0}
-					key={`item-card-${index}`}
-					showClaimed={false}
-					isLucky={
-						spinnerState.status === "done" && spinnerState.isLucky && index === spinnerState.winningIndex
-					}
-				/>
-			)),
-		);
-	}, [itemCardsData, spinnerState.status, spinnerState.isLucky, spinnerState.winningIndex]);
+				>
+					<ItemCard
+						data={{
+							item: displayItem,
+							chance: line.chance,
+							claimed: line.claimed,
+						}}
+						layoutOrder={0}
+						strokeThickness={0}
+						showClaimed={false}
+						isLucky={
+							spinnerState.status === "done" &&
+							spinnerState.isLucky &&
+							index === spinnerState.winningIndex
+						}
+					/>
+				</frame>
+			);
+		});
+	}, [itemCardsData, spinnerState.status, spinnerState.isLucky, spinnerState.winningIndex, currentCase, px, clientStateController]);
 
 	useEffect(() => {
 		let heartbeatConnection: RBXScriptConnection | undefined;
@@ -400,7 +476,7 @@ export function SpinnerPage({ visible, currentCase, spinnerState, setSpinnerStat
 				heartbeatConnection.Disconnect();
 			}
 		};
-	}, [spinnerState.status, spinnerState.speed]);
+	}, [spinnerState.status, spinnerState.speed, px, itemCardsData.size()]);
 
 	return (
 		<frame

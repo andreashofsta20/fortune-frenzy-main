@@ -8,12 +8,15 @@ import { setInterval } from "@rbxts/set-timeout";
 import { getColorBasedOnTime, timeUntil } from "shared/util/string-utils";
 import { ClientStateController } from "client/controllers/ClientStateController";
 import { Modding } from "@flamework/core";
+import { Events } from "client/network";
+import { isVipActiveInSubscriptionMap } from "client/utils/is-vip-subscribed";
 import { CaseButton } from "./CaseButton";
 import { Case } from "typings/APIResponses";
 import { Corner } from "../tools/Corner";
 import { changeMenu } from "client/utils/menu-utils";
 import { useCountdown } from "client/hooks/use-countdown";
 import { TUTORIAL_TARGET_IDS } from "client/tutorial/tutorial-state";
+import { Players } from "@rbxts/services";
 
 interface Props {
 	visible: boolean;
@@ -87,23 +90,40 @@ export function CaseSelectorPage({ visible, currentCase, setCurrentCase }: Props
 			}
 		}, 0.5);
 
-		const casesArray: Case[] = [];
-		for (const [_, value] of clientStateController.Cases) casesArray.push(value);
-		casesArray.sort((a, b) => a.price < b.price);
+		const buildCasesArray = (cases: Map<string, Case>) => {
+			const isVip = isVipActiveInSubscriptionMap(clientStateController.SubscriptionData);
+			const casesArray: Case[] = [];
+			for (const [_, value] of cases) {
+				if (value.vip_only === true && !isVip) continue;
+				casesArray.push(value);
+			}
+			casesArray.sort((a, b) => a.price < b.price);
+			return casesArray;
+		};
 
-		setCurrentCasesArray(casesArray);
+		setCurrentCasesArray(buildCasesArray(clientStateController.Cases));
 
 		const caseChangeConnection = clientStateController.CaseChangedEvent.Connect((cases) => {
-			const casesArray: Case[] = [];
-			for (const [_, value] of cases) casesArray.push(value);
-			casesArray.sort((a, b) => a.price < b.price);
-
-			setCurrentCasesArray(casesArray);
+			setCurrentCasesArray(buildCasesArray(cases));
 		});
+
+		const subscriptionConnection = Events.SubscriptionStatusUpdate.connect(() => {
+			setCurrentCasesArray(buildCasesArray(clientStateController.Cases));
+		});
+
+		const lp = Players.LocalPlayer;
+		const vipAttrConnection =
+			lp !== undefined
+				? lp.GetAttributeChangedSignal("VIP").Connect(() => {
+						setCurrentCasesArray(buildCasesArray(clientStateController.Cases));
+				  })
+				: undefined;
 
 		return () => {
 			cleanup();
 			caseChangeConnection.Disconnect();
+			subscriptionConnection.Disconnect();
+			vipAttrConnection?.Disconnect();
 		};
 	}, [visible]);
 

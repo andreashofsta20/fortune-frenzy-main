@@ -40,11 +40,12 @@ func OpenCase(c *fiber.Ctx) error {
 	var devProduct string
 	var uiPrimary, uiColour string
 	var nextRotation *time.Time
+	var vipOnly bool
 
 	err = db.QueryRowContext(c.Context(),
-		"SELECT price, items, opened_count, min_value, max_value, available_for_gems, dev_product, ui_primary, ui_colour, next_rotation FROM cases_catalog WHERE id = ?",
+		"SELECT price, items, opened_count, min_value, max_value, available_for_gems, dev_product, ui_primary, ui_colour, next_rotation, vip_only FROM cases_catalog WHERE id = ?",
 		caseID,
-	).Scan(&_storedPrice, &itemsJSON, &openedCount, &_minValue, &_maxValue, &availableForGems, &devProduct, &uiPrimary, &uiColour, &nextRotation)
+	).Scan(&_storedPrice, &itemsJSON, &openedCount, &_minValue, &_maxValue, &availableForGems, &devProduct, &uiPrimary, &uiColour, &nextRotation, &vipOnly)
 	if err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Case not found"})
 	}
@@ -56,6 +57,10 @@ func OpenCase(c *fiber.Ctx) error {
 
 	if len(caseItems) == 0 {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Case has no items"})
+	}
+
+	if vipOnly && !body.VIPSubscribed {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "VIP subscription required for this case"})
 	}
 
 	computedPrice, minV, maxV, err := EnrichCaseItems(c.Context(), db, caseItems)
@@ -128,6 +133,7 @@ func OpenCase(c *fiber.Ctx) error {
 		MaxValue:         maxV,
 		AvailableForGems: availableForGems,
 		DevProduct:       devProduct,
+		VipOnly:          vipOnly,
 	}
 
 	return c.JSON(fiber.Map{

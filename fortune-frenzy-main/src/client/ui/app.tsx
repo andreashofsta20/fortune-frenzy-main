@@ -9,8 +9,8 @@ import Notifications from "./core/Notifications";
 import { PaycheckWidget } from "client/ui/core/PaycheckWidget";
 import { TutorialOfferModal } from "client/tutorial/TutorialOfferModal";
 import { TutorialOverlay } from "client/tutorial/TutorialOverlay";
-import { backendApiUnreachableAtom, menuUpscaledAtom } from "client/utils/global-state";
-import { computeIsTouchMenuMobileNow } from "client/utils/menu-mobile-upscale";
+import { backendApiUnreachableAtom } from "client/utils/global-state";
+import { ensureTouchMobileMenuUpscaleTutorialSync } from "client/utils/menu-mobile-upscale";
 import { GEMS_THUMB_IMAGE } from "shared/util/strings";
 
 const MENUS = {
@@ -33,11 +33,7 @@ export function App() {
 	const backendUnreachable = useAtom(backendApiUnreachableAtom);
 
 	useEffect(() => {
-		task.defer(() => {
-			if (computeIsTouchMenuMobileNow()) {
-				menuUpscaledAtom(true);
-			}
-		});
+		ensureTouchMobileMenuUpscaleTutorialSync();
 	}, []);
 
 	const buttons: [string, string][] = [

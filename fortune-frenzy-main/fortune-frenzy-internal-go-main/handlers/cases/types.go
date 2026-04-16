@@ -24,9 +24,11 @@ type CaseData struct {
 	MaxValue         int64      `json:"max_value"`
 	AvailableForGems bool       `json:"available_for_gems"`
 	DevProduct       string     `json:"dev_product"`
+	VipOnly          bool       `json:"vip_only"`
 }
 
 type OpenCaseRequestBody struct {
-	UserID string `json:"user_id"`
-	Lucky  bool   `json:"lucky"`
+	UserID        string `json:"user_id"`
+	Lucky         bool   `json:"lucky"`
+	VIPSubscribed bool   `json:"vip_subscribed"`
 }

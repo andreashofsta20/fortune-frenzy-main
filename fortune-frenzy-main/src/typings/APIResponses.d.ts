@@ -109,6 +109,8 @@ interface Case {
 	max_value: number;
 	available_for_gems: boolean;
 	dev_product: string;
+	/** When true, only VIP subscribers may open this case (server-enforced). */
+	vip_only?: boolean;
 }
 
 interface CasesResponse {

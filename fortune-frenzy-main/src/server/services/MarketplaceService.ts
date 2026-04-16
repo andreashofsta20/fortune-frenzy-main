@@ -420,6 +420,15 @@ export class MarketplaceService implements OnStart {
 		}
 
 		if (!listing) return this.clearStatusAndRespond(this.purchaseListingPlayerStatuses, player, "error", 404);
+		if (listing.seller_id === tostring(player.UserId)) {
+			return this.clearStatusAndRespond(
+				this.purchaseListingPlayerStatuses,
+				player,
+				"error",
+				400,
+				"You cannot buy your own listing",
+			);
+		}
 		const { price } = listing;
 		const onlineProfile = await this.PlayerManagementService.getOnlineProfile(player);
 		if (!onlineProfile) return this.clearStatusAndRespond(this.purchaseListingPlayerStatuses, player, "error", 403);

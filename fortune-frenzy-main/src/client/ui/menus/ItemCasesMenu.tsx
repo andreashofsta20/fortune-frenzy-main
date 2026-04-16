@@ -16,11 +16,13 @@ function ItemCasesMenuComponent({ visible, flashMenu }: Props) {
 		status: "none" | "loading" | "spinning" | "done" | "ready";
 		speed: number;
 		winningItem?: string;
+		winningIndex?: number;
 		isLucky?: boolean;
 	}>({
 		status: "none",
 		speed: 5,
 		winningItem: undefined,
+		winningIndex: undefined,
 		isLucky: false,
 	});
 

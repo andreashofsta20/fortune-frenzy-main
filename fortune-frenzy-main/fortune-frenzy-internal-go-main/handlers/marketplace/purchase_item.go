@@ -73,6 +73,10 @@ func PurchaseItem(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Listing has expired"})
 	}
 
+	if buyerID == listingSellerID {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Cannot buy your own listing"})
+	}
+
 	_, err = tx.ExecContext(c.Context(),
 		"UPDATE item_copies SET owner_id = ? WHERE user_asset_id = ?",
 		buyerID, userAssetID,

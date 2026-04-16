@@ -141,6 +141,11 @@ export class ItemCaseService implements OnStart {
 		const case_data = this.Cases.get(case_id);
 		if (!case_data) return { status: "error", message: "Invalid case" };
 
+		const vipStatus = await this.CommerceService.isSubscribed(player, "VIP");
+		if (case_data.vip_only === true && !vipStatus.isSubscribed) {
+			return { status: "error", message: "VIP subscription required for this case" };
+		}
+
 		if (flag === "robux") {
 			const devProductId = tonumber(case_data.dev_product) ?? 0;
 			if (devProductId <= 0) {
@@ -248,6 +253,7 @@ export class ItemCaseService implements OnStart {
 			const request = await new Request(`POST`, `/cases/open/${case_id}`, undefined, {
 				user_id: tostring(player.UserId),
 				lucky: flag === "lucky",
+				vip_subscribed: vipStatus.isSubscribed,
 			}).GetResponse();
 
 			const response = request.Response as OpenCaseResponse;

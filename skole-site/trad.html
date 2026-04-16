@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<!-- en tråd -->
+<html lang="nb">
+
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+	<meta name="description" content="lese tråd im1a">
+	<title>Tråd | IM1A-forum</title>
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link rel="stylesheet" href="style.css">
+	<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,400&family=DM+Sans:wght@400;500;600&display=optional" rel="stylesheet">
+</head>
+
+<body>
+
+	<nav class="navbar" aria-label="Hovedmeny">
+		<div class="logo"><a href="index.html">IM1A-forum</a></div>
+		<ul class="nav-links">
+			<li><a href="index.html">Framsida</a></li>
+			<li><a href="om.html">Om nettstedet</a></li>
+			<li><a href="bilder.html">Galleri</a></li>
+		</ul>
+	</nav>
+
+	<main>
+		<p class="forum-tilbake"><a href="index.html">← tilbake</a></p>
+		<div id="trad-innhold"></div>
+	</main>
+
+	<footer class="hoved-footer">
+		<p>© 2026 Andreas Steen Hofstad · IM1A · HTML-prosjekt</p>
+	</footer>
+
+	<script src="forum.js"></script>
+	<script>
+		document.addEventListener("DOMContentLoaded", function () {
+			var q = new URLSearchParams(window.location.search);
+			var id = q.get("id");
+			var hoved = document.getElementById("trad-innhold");
+
+			function esc(s) {
+				var d = document.createElement("div");
+				d.textContent = s;
+				return d.innerHTML;
+			}
+
+			if (!id) {
+				hoved.innerHTML =
+					'<div class="tekst-boks"><p>mangler id i url. <a href="index.html">framsida</a></p></div>';
+				return;
+			}
+
+			var tr = ForumGreier.hentTrad(id);
+			if (!tr) {
+				hoved.innerHTML =
+					'<div class="tekst-boks"><p>finnes ikke den tråden. <a href="index.html">framsida</a></p></div>';
+				return;
+			}
+
+			var skjemaHtml =
+				'<section class="forum-svar-skjema tekst-boks" aria-labelledby="svar-tittel">' +
+				'<h2 id="svar-tittel">Skriv svar</h2>' +
+				'<form id="svar-form" class="skjema">' +
+				'<div class="skjema-gruppe">' +
+				'<label for="svar-tekst">Svar</label>' +
+				'<textarea id="svar-tekst" rows="5" required></textarea>' +
+				"</div>" +
+				'<p id="svar-feil" class="skjema-feil" role="alert" hidden></p>' +
+				'<button type="submit" class="knapp knapp--mørk">send</button>' +
+				"</form></section>";
+
+			var svarListe = (tr.replies || [])
+				.map(function (s) {
+					return (
+						'<article class="forum-svar">' +
+						'<header class="forum-svar__hdr">' +
+						"<strong>" +
+						esc(s.author) +
+						"</strong> · " +
+						'<time datetime="' +
+						esc(s.createdAt) +
+						'">' +
+						esc(ForumGreier.visTid(s.createdAt)) +
+						"</time>" +
+						"</header>" +
+						'<div class="forum-svar__body">' +
+						esc(s.body).replace(/\n/g, "<br>") +
+						"</div>" +
+						"</article>"
+					);
+				})
+				.join("");
+
+			hoved.innerHTML =
+				'<article class="forum-hovedinnlegg tekst-boks">' +
+				"<h1>" +
+				esc(tr.title) +
+				"</h1>" +
+				'<p class="forum-meta">' +
+				"Av <strong>" +
+				esc(tr.author) +
+				"</strong> · " +
+				'<time datetime="' +
+				esc(tr.createdAt) +
+				'">' +
+				esc(ForumGreier.visTid(tr.createdAt)) +
+				"</time>" +
+				"</p>" +
+				'<div class="forum-innlegg-tekst">' +
+				esc(tr.body).replace(/\n/g, "<br>") +
+				"</div>" +
+				"</article>" +
+				'<section class="forum-svar-liste" aria-label="Svar">' +
+				"<h2>Svar (" +
+				(tr.replies ? tr.replies.length : 0) +
+				")</h2>" +
+				(svarListe || '<p class="forum-inga-svar">ingen svar</p>') +
+				"</section>" +
+				skjemaHtml;
+
+			document.getElementById("svar-form").addEventListener("submit", function (e) {
+				e.preventDefault();
+				var feilBoks = document.getElementById("svar-feil");
+				feilBoks.hidden = true;
+				var tekst = document.getElementById("svar-tekst").value;
+				var utfall = ForumGreier.skrivSvar(id, tekst);
+				if (utfall.ok) {
+					window.location.reload();
+				} else {
+					feilBoks.textContent = utfall.msg || "nei";
+					feilBoks.hidden = false;
+				}
+			});
+		});
+	</script>
+</body>
+
+</html>

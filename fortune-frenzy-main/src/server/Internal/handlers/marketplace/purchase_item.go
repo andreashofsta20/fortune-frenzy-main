@@ -73,6 +73,12 @@ func PurchaseItem(c *fiber.Ctx) error {
 		})
 	}
 
+	if strconv.FormatInt(buyerID, 10) == listing.SellerID {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "Cannot buy your own listing",
+		})
+	}
+
 	_, err = tx.ExecContext(c.Context(),
 		"UPDATE item_copies SET owner_id = ? WHERE user_asset_id = ?",
 		buyerID, userAssetID,

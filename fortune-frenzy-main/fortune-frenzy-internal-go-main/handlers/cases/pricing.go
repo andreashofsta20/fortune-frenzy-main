@@ -23,6 +23,33 @@ func caseOpenHouseEdgeMultiplier() float64 {
 	return 1 + pct/100
 }
 
+// caseOpenOddsValueExponent is the exponent p in weight ∝ 1/value^p (higher p → rarer expensive pulls).
+// Env CASE_OPEN_ODDS_VALUE_EXPONENT (default 0.9). Typical range 0.6–1.2.
+func caseOpenOddsValueExponent() float64 {
+	s := strings.TrimSpace(os.Getenv("CASE_OPEN_ODDS_VALUE_EXPONENT"))
+	if s == "" {
+		return 0.9
+	}
+	f, err := strconv.ParseFloat(s, 64)
+	if err != nil || f < 0.15 || f > 2.5 {
+		return 0.9
+	}
+	return f
+}
+
+// applyInverseValueWeights sets each item's Chance from its Value (Rolimons): higher value → lower weight.
+// Recomputed whenever items are enriched so case price and implied odds track live catalog values.
+func applyInverseValueWeights(items []CaseItem) {
+	exp := caseOpenOddsValueExponent()
+	for i := range items {
+		v := float64(items[i].Value)
+		if v < 1 {
+			v = 1
+		}
+		items[i].Chance = 1 / math.Pow(v, exp)
+	}
+}
+
 // caseRowsQuerier matches *sql.DB and *sql.Conn (service.GetMariaDBConnection).
 type caseRowsQuerier interface {
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
@@ -67,8 +94,11 @@ func fetchItemValuesByIDs(ctx context.Context, db caseRowsQuerier, ids []string)
 	return out, rows.Err()
 }
 
-// EnrichCaseItems sets each item's Value from the items catalog, recomputes case price as
-// ceil(EV * houseEdge) where EV = Σ (chance/totalChance) * value and houseEdge defaults to 1.05 (5%).
+// EnrichCaseItems sets each item's Value from the items catalog (Rolimons), applies inverse-value weights
+// (weight ∝ 1/value^p) so a high-value line in the case is always less likely than a cheaper line — same idea
+// as ticket-style case sites, with house edge on top. Same four item ids can therefore show a new price
+// whenever Rolimons updates `items.value`, without changing the daily pool.
+// EV = Σ (chance/totalChance) * value, price = ceil(EV * houseEdge), house edge default 1.05 (5%).
 // Override with env CASE_OPEN_HOUSE_EDGE_PERCENT (e.g. "7.5" for 7.5%).
 func EnrichCaseItems(ctx context.Context, db caseRowsQuerier, items []CaseItem) (price int64, minV int64, maxV int64, err error) {
 	if len(items) == 0 {
@@ -82,6 +112,20 @@ func EnrichCaseItems(ctx context.Context, db caseRowsQuerier, items []CaseItem) 
 	if err != nil {
 		return 0, 0, 0, err
 	}
+	minV = math.MaxInt64
+	maxV = math.MinInt64
+	for i := range items {
+		v := values[items[i].ID]
+		items[i].Value = v
+		if v < minV {
+			minV = v
+		}
+		if v > maxV {
+			maxV = v
+		}
+	}
+	applyInverseValueWeights(items)
+
 	var totalW float64
 	for _, it := range items {
 		ch := it.Chance
@@ -93,24 +137,18 @@ func EnrichCaseItems(ctx context.Context, db caseRowsQuerier, items []CaseItem) 
 	if totalW <= 0 {
 		return 0, 0, 0, fmt.Errorf("case has zero total weight")
 	}
-	minV = math.MaxInt64
-	maxV = math.MinInt64
+	// Clients expect chance as percentage points summing to ~100: formatPercentage + shuffle-case-items use (chance/100)*N.
+	for i := range items {
+		items[i].Chance = (items[i].Chance / totalW) * 100
+	}
 	var ev float64
 	for i := range items {
-		v := values[items[i].ID]
-		items[i].Value = v
+		v := items[i].Value
 		ch := items[i].Chance
 		if ch < 0 {
 			ch = 0
 		}
-		p := ch / totalW
-		ev += p * float64(v)
-		if v < minV {
-			minV = v
-		}
-		if v > maxV {
-			maxV = v
-		}
+		ev += (ch / 100) * float64(v)
 	}
 	if minV == math.MaxInt64 {
 		minV = 0
@@ -123,4 +161,9 @@ func EnrichCaseItems(ctx context.Context, db caseRowsQuerier, items []CaseItem) 
 		price = 0
 	}
 	return price, minV, maxV, nil
+}
+
+// FetchItemValuesByIDs loads Rolimons-backed values from the items catalog (used by case rotation worker).
+func FetchItemValuesByIDs(ctx context.Context, db caseRowsQuerier, ids []string) (map[string]int64, error) {
+	return fetchItemValuesByIDs(ctx, db, ids)
 }

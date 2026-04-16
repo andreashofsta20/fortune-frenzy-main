@@ -208,6 +208,8 @@ export type TutorialOfferRewardPreview = {
 export type TutorialState = {
 	active: boolean;
 	completed: boolean;
+	/** Server says the guided tour may be offered (new player); used to defer mobile menu upscale until resolved. */
+	should_show_guided: boolean;
 	completionPending: boolean;
 	stepIndex: number;
 	reward?: TutorialRewardSummary;
@@ -218,6 +220,7 @@ export type TutorialState = {
 export const tutorialStateAtom = atom<TutorialState>({
 	active: false,
 	completed: false,
+	should_show_guided: false,
 	completionPending: false,
 	stepIndex: 0,
 	reward: undefined,
@@ -359,6 +362,7 @@ export function applyTutorialServerState(serverState: TutorialServerState, autoS
 		...currentState,
 		active: false,
 		completed: serverState.completed,
+		should_show_guided: serverState.shouldShow,
 		completionPending: false,
 		stepIndex: 0,
 		reward: undefined,
@@ -409,6 +413,7 @@ export function advanceTutorialAction(actionId: TutorialActionId) {
 		tutorialStateAtom({
 			...state,
 			active: false,
+			should_show_guided: state.should_show_guided,
 			completionPending: true,
 			stepIndex: nextStepIndex,
 		});
@@ -431,6 +436,7 @@ export function finishTutorialFlow(success: boolean, reward?: TutorialRewardSumm
 	tutorialStateAtom({
 		...state,
 		active: false,
+		should_show_guided: success ? false : state.should_show_guided,
 		completionPending: false,
 		completed: success,
 		reward,

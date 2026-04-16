@@ -40,7 +40,7 @@ func InitMongoDB() {
 			return
 		}
 		mongoClient = client
-		log.Println("Connected to MongoDB (wallet)")
+		log.Println("Connected to MongoDB (wallets m.m.)")
 	})
 }
 
